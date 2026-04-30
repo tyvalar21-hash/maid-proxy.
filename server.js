@@ -2,7 +2,7 @@ const express = require("express");
 const app = express();
 app.use(express.json());
 
-const DEEPSEEK_KEY = "sk-c76e0075caf04c6ab0cdac9fbbfe3401"; // <- ВСТАВЬ СВОЙ НОВЫЙ КЛЮЧ ЗДЕСЬ
+const DEEPSEEK_KEY = "sk-2614f764e4384e0fa9450e9d36c10a5c"; // <- ВСТАВЬ СВОЙ НОВЫЙ КЛЮЧ ЗДЕСЬ
 
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 

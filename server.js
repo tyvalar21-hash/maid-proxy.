@@ -2,18 +2,18 @@ const express = require("express");
 const app = express();
 app.use(express.json());
 
-const DEEPSEEK_KEY = "AIzaSyAwqiw3TZYbECM32K-_5llrSjZc85H4TTA";
+const GROQ_KEY = "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";
 
 app.post("/chat", async (req, res) => {
     try {
-        const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": "Bearer " + DEEPSEEK_KEY
+                "Authorization": "Bearer " + GROQ_KEY
             },
             body: JSON.stringify({
-                model: "deepseek-chat",
+                model: "llama-3.3-70b-versatile",
                 messages: [
                     { role: "system", content: req.body.role || "Ты Анна." },
                     { role: "user", content: req.body.message || "Привет" }

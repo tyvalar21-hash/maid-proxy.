@@ -2,7 +2,7 @@ const express = require("express");
 const app = express();
 app.use(express.json());
 
-const DEEPSEEK_KEY = "sk-2614f764e4384e0fa9450e9d36c10a5c";
+const DEEPSEEK_KEY = "sk-7cd10445005f4c0a90ec4138f2a68a54";
 
 app.post("/chat", async (req, res) => {
     try {

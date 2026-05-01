@@ -2,17 +2,16 @@ const express = require("express");
 const app = express();
 app.use(express.json());
 
-// Два ключа Groq
 const KEYS = [
     "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",
-    "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"
+    "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",
+    "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"
 ];
 
 let currentKeyIndex = 0;
-const MAX_RETRIES = KEYS.length;
 
-async function askGroq(message, role) {
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+app.post("/chat", async (req, res) => {
+    for (let attempt = 0; attempt < KEYS.length; attempt++) {
         const key = KEYS[currentKeyIndex];
         
         try {
@@ -25,15 +24,13 @@ async function askGroq(message, role) {
                 body: JSON.stringify({
                     model: "llama-3.3-70b-versatile",
                     messages: [
-                        { role: "system", content: role || "Ты Мария." },
-                        { role: "user", content: message || "Привет" }
+                        { role: "system", content: req.body.role || "Ты Мария." },
+                        { role: "user", content: req.body.message || "Привет" }
                     ]
                 })
             });
 
-            // Если лимит исчерпан — переключаем ключ
             if (response.status === 429) {
-                console.log("Ключ " + (currentKeyIndex + 1) + " исчерпан. Переключаю...");
                 currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
                 continue;
             }
@@ -41,26 +38,17 @@ async function askGroq(message, role) {
             const data = await response.json();
             
             if (data.choices && data.choices[0]) {
-                return data.choices[0].message.content;
+                return res.json({ reply: data.choices[0].message.content });
             }
             
-            return "Ошибка: " + JSON.stringify(data);
+            return res.json({ reply: "Ошибка: " + JSON.stringify(data) });
             
         } catch (e) {
-            console.log("Ошибка с ключом " + (currentKeyIndex + 1) + ": " + e.message);
             currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
         }
     }
     
-    return "Все ключи исчерпаны. Попробуйте позже.";
-}
-
-app.post("/chat", async (req, res) => {
-    const reply = await askGroq(
-        req.body.message || "Привет",
-        req.body.role || "Ты Мария."
-    );
-    res.json({ reply: reply });
+    res.json({ reply: "Все ключи исчерпаны." });
 });
 
 app.listen(3000);

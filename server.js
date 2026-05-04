@@ -3,10 +3,10 @@ const app = express();
 app.use(express.json());
 
 const KEYS = [
-    "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",
-    "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",
-    "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"
-];
+    process.env.GROQ_API_KEY,
+    process.env.GROQ_API_KEY_2,
+    process.env.GROQ_API_KEY_3
+].filter(Boolean);
 
 let currentKeyIndex = 0;
 

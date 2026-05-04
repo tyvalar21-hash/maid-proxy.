@@ -10,8 +10,10 @@ const KEYS = [
 
 let currentKeyIndex = 0;
 
-// Хранилище последних сообщений гостей (playerId -> последнее сообщение)
+// Хранилище последних сообщений гостей
 const guestMessages = {};
+const MAX_GUEST_MESSAGES = 10;
+const guestMessageOrder = [];
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -26,6 +28,17 @@ app.post("/chat", async (req, res) => {
     // ГОСТЬ — сохраняем сообщение и молчим
     if (playerRole === "guest") {
         guestMessages[playerId] = message;
+        
+        if (!guestMessageOrder.includes(playerId)) {
+            guestMessageOrder.push(playerId);
+        }
+        
+        // Удаляем старые записи если больше 10
+        while (guestMessageOrder.length > MAX_GUEST_MESSAGES) {
+            const oldId = guestMessageOrder.shift();
+            delete guestMessages[oldId];
+        }
+        
         return res.json({ reply: "" });
     }
     
@@ -47,14 +60,11 @@ app.post("/chat", async (req, res) => {
         model = "llama-3.1-8b-instant";
         
     } else if (translateForGuest && playerRole === "admin") {
-        // Админ просит перевести ЕГО сообщение гостю
         finalMessage = message.replace(/!/g, "").trim();
         systemPrompt = "Переведи сообщение хозяина на тот же язык, на котором говорит хозяин. Только перевод, без лишних слов.";
         model = "llama-3.3-70b-versatile";
         
     } else if (translateFromGuest && playerRole === "admin") {
-        // Админ просит перевести слова гостя
-        // Ищем последнее сообщение любого гостя
         let guestMsg = "";
         for (const [id, msg] of Object.entries(guestMessages)) {
             guestMsg = msg;

@@ -15,6 +15,26 @@ function sleep(ms) {
 }
 
 app.post("/chat", async (req, res) => {
+    let message = req.body.message || "Привет";
+    const userRole = req.body.role || "";
+    
+    // Ищем два ! и проверяем, что между ними только пробелы (или ничего)
+    const match = message.match(/!\s*!/);
+    const isCommand = match !== null;
+    
+    let systemPrompt;
+    let model;
+    
+    if (isCommand) {
+        // Убираем все ! из сообщения
+        message = message.replace(/!/g, "").trim();
+        systemPrompt = userRole;
+        model = "llama-3.1-8b-instant";
+    } else {
+        systemPrompt = "Ты Мария, дружелюбная служанка. Отвечай кратко, на том же языке что и хозяин. Без команд и скобок.";
+        model = "llama-3.3-70b-versatile";
+    }
+    
     for (let attempt = 0; attempt < KEYS.length; attempt++) {
         const key = KEYS[currentKeyIndex];
         
@@ -26,15 +46,15 @@ app.post("/chat", async (req, res) => {
                     "Authorization": "Bearer " + key
                 },
                 body: JSON.stringify({
-                    model: "llama-3.3-70b-versatile",
+                    model: model,
                     messages: [
-                        { role: "system", content: req.body.role || "Ты Мария." },
-                        { role: "user", content: req.body.message || "Привет" }
-                    ]
+                        { role: "system", content: systemPrompt },
+                        { role: "user", content: message }
+                    ],
+                    stream: false
                 })
             });
 
-            // Успех — возвращаем ответ
             if (response.ok) {
                 const data = await response.json();
                 if (data.choices && data.choices[0]) {
@@ -43,14 +63,12 @@ app.post("/chat", async (req, res) => {
                 return res.json({ reply: "Ошибка: " + JSON.stringify(data) });
             }
 
-            // Лимит исчерпан — ЖДЁМ, сколько сказали
             if (response.status === 429) {
                 const retryAfter = response.headers.get("Retry-After") || "5";
                 const waitSeconds = parseInt(retryAfter) || 5;
                 
                 console.log(`Ключ ${currentKeyIndex + 1}: лимит. Жду ${waitSeconds} сек...`);
                 
-                // Если это последний ключ — сообщаем игроку
                 if (attempt === KEYS.length - 1) {
                     const waitTime = waitSeconds >= 60 
                         ? `${Math.ceil(waitSeconds / 60)} мин` 
@@ -58,13 +76,11 @@ app.post("/chat", async (req, res) => {
                     return res.json({ reply: `Все ключи исчерпаны. Подожди ${waitTime}.` });
                 }
                 
-                // Ждём и пробуем следующий ключ
                 await sleep(waitSeconds * 1000);
                 currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
                 continue;
             }
 
-            // Другая ошибка — пробуем следующий ключ без ожидания
             console.log(`Ключ ${currentKeyIndex + 1}: ошибка ${response.status}`);
             currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
             

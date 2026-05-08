@@ -1,4 +1,3 @@
-
 const express = require("express");
 const app = express();
 app.use(express.json());
@@ -25,7 +24,7 @@ app.post("/chat", async (req, res) => {
     const playerRole = req.body.playerRole || "guest";
     const playerId = req.body.playerId || "unknown";
     
-    const isTranslation = userRole.toLowerCase().includes("translate") && userRole.toLowerCase().includes("translator");
+    const isTranslation = userRole.toLowerCase().includes("translate");
     
     if (playerRole === "guest" && !isTranslation) {
         guestMessages[playerId] = message;
@@ -126,7 +125,7 @@ app.post("/chat", async (req, res) => {
                     const waitTime = waitSeconds >= 60 
                         ? `${Math.ceil(waitSeconds / 60)} min` 
                         : `${waitSeconds} sec`;
-                    return res.json({ reply: 'All keys exhausted. Wait ${waitTime}.' });
+                    return res.json({ reply: `All keys exhausted. Wait ${waitTime}.` });
                 }
                 
                 await sleep(waitSeconds * 1000);

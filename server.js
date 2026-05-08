@@ -40,6 +40,9 @@ app.post("/chat", async (req, res) => {
         return res.json({ reply: "" });
     }
     
+    // Проверка на перевод
+    const isTranslation = userRole.toLowerCase().includes("translate") && userRole.toLowerCase().includes("translator");
+    
     const match = message.match(/!\s*!/);
     const isCommand = match !== null;
     
@@ -50,7 +53,13 @@ app.post("/chat", async (req, res) => {
     let model;
     let finalMessage = message;
     
-    if (isCommand) {
+    if (isTranslation) {
+        // Режим переводчика
+        finalMessage = message;
+        systemPrompt = userRole;
+        model = "llama-3.3-70b-versatile";
+        
+    } else if (isCommand) {
         finalMessage = message.replace(/!/g, "").trim();
         systemPrompt = userRole || "You are Maria. Convert messages to commands: [command] [target] [params].";
         model = "llama-3.1-8b-instant";

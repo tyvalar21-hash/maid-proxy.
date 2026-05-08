@@ -24,8 +24,11 @@ app.post("/chat", async (req, res) => {
     const playerRole = req.body.playerRole || "guest";
     const playerId = req.body.playerId || "unknown";
     
-    // ГОСТЬ
-    if (playerRole === "guest") {
+    // Проверка на перевод ДО проверки гостя
+    const isTranslation = userRole.toLowerCase().includes("translate") && userRole.toLowerCase().includes("translator");
+    
+    // ГОСТЬ только если НЕ перевод
+    if (playerRole === "guest" && !isTranslation) {
         guestMessages[playerId] = message;
         
         if (!guestMessageOrder.includes(playerId)) {
@@ -40,9 +43,6 @@ app.post("/chat", async (req, res) => {
         return res.json({ reply: "" });
     }
     
-    // Проверка на перевод
-    const isTranslation = userRole.toLowerCase().includes("translate") && userRole.toLowerCase().includes("translator");
-    
     const match = message.match(/!\s*!/);
     const isCommand = match !== null;
     
@@ -54,7 +54,6 @@ app.post("/chat", async (req, res) => {
     let finalMessage = message;
     
     if (isTranslation) {
-        // Режим переводчика
         finalMessage = message;
         systemPrompt = userRole;
         model = "llama-3.3-70b-versatile";

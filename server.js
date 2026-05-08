@@ -1,3 +1,4 @@
+
 const express = require("express");
 const app = express();
 app.use(express.json());
@@ -24,10 +25,8 @@ app.post("/chat", async (req, res) => {
     const playerRole = req.body.playerRole || "guest";
     const playerId = req.body.playerId || "unknown";
     
-    // Проверка на перевод ДО проверки гостя
     const isTranslation = userRole.toLowerCase().includes("translate") && userRole.toLowerCase().includes("translator");
     
-    // ГОСТЬ только если НЕ перевод
     if (playerRole === "guest" && !isTranslation) {
         guestMessages[playerId] = message;
         
@@ -83,7 +82,7 @@ app.post("/chat", async (req, res) => {
         model = "llama-3.3-70b-versatile";
         
     } else {
-        systemPrompt = "You are Maria, a friendly maid. Reply in the SAME language the user writes in. Keep answers short and natural. No commands.";
+        systemPrompt = "You are Maria, a devoted maid. Your master is the owner/admin. Call him 'master' (or 'хозяин' in Russian, 'tuan' in Indonesian, 'amo' in Spanish). Reply in the SAME language the user writes. Keep answers short and natural. Never act like an AI assistant. You are a maid, not a helper. Be cute and loyal.";
         model = "llama-3.3-70b-versatile";
     }
     
@@ -127,7 +126,7 @@ app.post("/chat", async (req, res) => {
                     const waitTime = waitSeconds >= 60 
                         ? `${Math.ceil(waitSeconds / 60)} min` 
                         : `${waitSeconds} sec`;
-                    return res.json({ reply: `All keys exhausted. Wait ${waitTime}.` });
+                    return res.json({ reply: 'All keys exhausted. Wait ${waitTime}.' });
                 }
                 
                 await sleep(waitSeconds * 1000);

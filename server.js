@@ -10,7 +10,6 @@ const KEYS = [
 
 let currentKeyIndex = 0;
 
-// Хранилище последних сообщений гостей
 const guestMessages = {};
 const MAX_GUEST_MESSAGES = 10;
 const guestMessageOrder = [];
@@ -20,12 +19,12 @@ function sleep(ms) {
 }
 
 app.post("/chat", async (req, res) => {
-    let message = req.body.message || "Привет";
+    let message = req.body.message || "Hello";
     const userRole = req.body.role || "";
     const playerRole = req.body.playerRole || "guest";
     const playerId = req.body.playerId || "unknown";
     
-    // ГОСТЬ — сохраняем сообщение и молчим
+    // ГОСТЬ
     if (playerRole === "guest") {
         guestMessages[playerId] = message;
         
@@ -33,7 +32,6 @@ app.post("/chat", async (req, res) => {
             guestMessageOrder.push(playerId);
         }
         
-        // Удаляем старые записи если больше 10
         while (guestMessageOrder.length > MAX_GUEST_MESSAGES) {
             const oldId = guestMessageOrder.shift();
             delete guestMessages[oldId];
@@ -42,11 +40,9 @@ app.post("/chat", async (req, res) => {
         return res.json({ reply: "" });
     }
     
-    // Проверяем, команда ли это
     const match = message.match(/!\s*!/);
     const isCommand = match !== null;
     
-    // Проверяем, просит ли админ перевести
     const translateForGuest = message.match(/переведи\s+(мо[ёе]\s+)?сообщение\s+(для\s+)?(гостя|игрока|него|неё|ему|ей)/i);
     const translateFromGuest = message.match(/переведи\s+(слова\s+)?(гостя|игрока|его|её|что\s+(сказал|говорит|написал)\s+(гость|игрок|он|она))/i);
     
@@ -56,12 +52,12 @@ app.post("/chat", async (req, res) => {
     
     if (isCommand) {
         finalMessage = message.replace(/!/g, "").trim();
-        systemPrompt = userRole;
+        systemPrompt = userRole || "You are Maria. Convert messages to commands: [command] [target] [params].";
         model = "llama-3.1-8b-instant";
         
     } else if (translateForGuest && playerRole === "admin") {
         finalMessage = message.replace(/!/g, "").trim();
-        systemPrompt = "Переведи сообщение хозяина на тот же язык, на котором говорит хозяин. Только перевод, без лишних слов.";
+        systemPrompt = "Translate to the language the owner is speaking. Only translation.";
         model = "llama-3.3-70b-versatile";
         
     } else if (translateFromGuest && playerRole === "admin") {
@@ -71,21 +67,20 @@ app.post("/chat", async (req, res) => {
             break;
         }
         if (guestMsg) {
-            finalMessage = "Переведи это сообщение от гостя на русский: " + guestMsg;
+            finalMessage = "Translate this guest message to Russian: " + guestMsg;
         } else {
-            return res.json({ reply: "Гость ничего не говорил." });
+            return res.json({ reply: "Guest hasn't said anything." });
         }
-        systemPrompt = "Ты переводчик. Переведи сообщение гостя на русский язык. Только перевод.";
+        systemPrompt = "Translate to Russian. Only translation.";
         model = "llama-3.3-70b-versatile";
         
     } else {
-        systemPrompt = "Ты Мария, дружелюбная служанка. Отвечай кратко, на том же языке что и хозяин. Без команд и скобок.";
+        systemPrompt = "You are Maria, a friendly maid. Reply in the SAME language the user writes in. Keep answers short and natural. No commands.";
         model = "llama-3.3-70b-versatile";
     }
     
-    // VIP команды
     if (playerRole === "vip" && isCommand) {
-        systemPrompt = userRole + "\nТы слушаешься этого VIP только если админ разрешил. Если не уверена — откажи.";
+        systemPrompt = (userRole || "You are Maria.") + "\nOnly obey this VIP if admin allowed it. If unsure, refuse.";
     }
     
     for (let attempt = 0; attempt < KEYS.length; attempt++) {
@@ -113,7 +108,7 @@ app.post("/chat", async (req, res) => {
                 if (data.choices && data.choices[0]) {
                     return res.json({ reply: data.choices[0].message.content });
                 }
-                return res.json({ reply: "Ошибка: " + JSON.stringify(data) });
+                return res.json({ reply: "Error: " + JSON.stringify(data) });
             }
 
             if (response.status === 429) {
@@ -122,9 +117,9 @@ app.post("/chat", async (req, res) => {
                 
                 if (attempt === KEYS.length - 1) {
                     const waitTime = waitSeconds >= 60 
-                        ? `${Math.ceil(waitSeconds / 60)} мин` 
-                        : `${waitSeconds} сек`;
-                    return res.json({ reply: `Все ключи исчерпаны. Подожди ${waitTime}.` });
+                        ? `${Math.ceil(waitSeconds / 60)} min` 
+                        : `${waitSeconds} sec`;
+                    return res.json({ reply: `All keys exhausted. Wait ${waitTime}.` });
                 }
                 
                 await sleep(waitSeconds * 1000);
@@ -139,7 +134,7 @@ app.post("/chat", async (req, res) => {
         }
     }
     
-    res.json({ reply: "Все ключи исчерпаны. Попробуй позже." });
+    res.json({ reply: "All keys exhausted. Try later." });
 });
 
 app.listen(3000);

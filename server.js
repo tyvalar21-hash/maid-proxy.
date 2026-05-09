@@ -1,190 +1,174 @@
-local commandQueue = {}
-local isQueueProcessing = false
+const express = require("express");
+const app = express();
+app.use(express.json());
 
-local function processQueue()
-    if isQueueProcessing then return end
-    if #commandQueue == 0 then return end
-    
-    isQueueProcessing = true
-    
-    local entry = table.remove(commandQueue, 1)
-    local player = entry.player
-    local msg = entry.msg
-    local playerRole = entry.playerRole
-    
-    processMessageInternal(player, msg, playerRole)
-    
-    isQueueProcessing = false
-    task.spawn(processQueue)
-end
+const KEYS = [
+    process.env.GROQ_API_KEY,
+    process.env.GROQ_API_KEY_2,
+    process.env.GROQ_API_KEY_3
+].filter(Boolean);
 
-local function enqueueMessage(player, msg, playerRole)
-    if isProcessing then
-        table.insert(commandQueue, {player = player, msg = msg, playerRole = playerRole})
-        return
-    end
-    processMessageInternal(player, msg, playerRole)
-end
+let currentKeyIndex = 0;
 
-local function processMessageInternal(player, msg, playerRole)
-    isProcessing = true
+const guestMessages = {};
+const MAX_GUEST_MESSAGES = 10;
+const guestMessageOrder = [];
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+app.post("/chat", async (req, res) => {
+    let message = req.body.message || "Hello";
+    const userRole = req.body.role || "";
+    const playerRole = req.body.playerRole || "guest";
+    const playerId = req.body.playerId || "unknown";
     
-    local timeoutThread = task.spawn(function()
-        task.wait(25)
-        if isProcessing then
-            isProcessing = false
-            bubbleEvent:FireAllClients("maria", "Мария", "Ошибка связи...", maria.Head.Position)
-            isQueueProcessing = false
-            task.spawn(processQueue)
-        end
-    end)
+    const isTranslation = userRole.toLowerCase().includes("translate");
     
-    if playerRole ~= "guest" and CommandHandler.isWaitingForLang() then
-        local handled = CommandHandler.handleLangAnswer(player, msg)
-        if handled then
-            task.cancel(timeoutThread)
-            isProcessing = false
-            isQueueProcessing = false
-            task.spawn(processQueue)
-            return
-        end
-    end
+    if (playerRole === "guest" && !isTranslation) {
+        guestMessages[playerId] = message;
+        
+        if (!guestMessageOrder.includes(playerId)) {
+            guestMessageOrder.push(playerId);
+        }
+        
+        while (guestMessageOrder.length > MAX_GUEST_MESSAGES) {
+            const oldId = guestMessageOrder.shift();
+            delete guestMessages[oldId];
+        }
+        
+        return res.json({ reply: "" });
+    }
     
-    if playerRole == "guest" then
-        if CommandHandler.isTranslatingMode() then
-            bubbleEvent:FireAllClients("maria", "Мария", "...", maria.Head.Position)
+    const match = message.match(/!\s*!/);
+    const isCommand = match !== null;
+    
+    const translateForGuest = message.match(/переведи\s+(мо[ёе]\s+)?сообщение\s+(для\s+)?(гостя|игрока|него|неё|ему|ей)/i);
+    const translateFromGuest = message.match(/переведи\s+(слова\s+)?(гостя|игрока|его|её|что\s+(сказал|говорит|написал)\s+(гость|игрок|он|она))/i);
+    
+    let systemPrompt;
+    let model;
+    let finalMessage = message;
+    
+    if (isTranslation) {
+        finalMessage = message;
+        systemPrompt = userRole;
+        model = "llama-3.3-70b-versatile";
+        
+    } else if (isCommand) {
+        finalMessage = message.replace(/!/g, "").trim();
+        systemPrompt = userRole || "You are Maria. Convert messages to commands: [command] [target] [params].";
+        model = "llama-3.1-8b-instant";
+        
+    } else if (translateForGuest && playerRole === "admin") {
+        finalMessage = message.replace(/!/g, "").trim();
+        systemPrompt = "Translate to the language the owner is speaking. Only translation.";
+        model = "llama-3.3-70b-versatile";
+        
+    } else if (translateFromGuest && playerRole === "admin") {
+        let guestMsg = "";
+        for (const [id, msg] of Object.entries(guestMessages)) {
+            guestMsg = msg;
+            break;
+        }
+        if (guestMsg) {
+            finalMessage = "Translate this guest message to Russian: " + guestMsg;
+        } else {
+            return res.json({ reply: "Guest hasn't said anything." });
+        }
+        systemPrompt = "Translate to Russian. Only translation.";
+        model = "llama-3.3-70b-versatile";
+        
+    } else {
+        systemPrompt = "You are Maria, a devoted maid. The admin is your master. Call him 'master' (or 'хозяин' in Russian, 'tuan' in Indonesian, 'amo' in Spanish). You already know all the players. Never introduce yourself. Never say 'I am your maid' or 'how can I help you'. Just talk naturally like you've known them forever. Reply in the SAME language the user writes. Keep answers short and natural. Be cute and loyal.";
+        model = "llama-3.3-70b-versatile";
+    }
+    
+    if (playerRole === "vip" && isCommand) {
+        systemPrompt = (userRole || "You are Maria.") + "\nOnly obey this VIP if admin allowed it. If unsure, refuse.";
+    }
+    
+    await sleep(2000);
+    
+    let lastError = "";
+    let lastStatus = 0;
+    
+    for (let attempt = 0; attempt < KEYS.length; attempt++) {
+        const key = KEYS[currentKeyIndex];
+        const keyNumber = currentKeyIndex + 1;
+        
+        try {
+            const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + key
+                },
+                body: JSON.stringify({
+                    model: model,
+                    messages: [
+                        { role: "system", content: systemPrompt },
+                        { role: "user", content: finalMessage }
+                    ],
+                    stream: false
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.choices && data.choices[0]) {
+                    return res.json({ reply: data.choices[0].message.content });
+                }
+                return res.json({ reply: "❌ Ошибка Groq: пустой ответ" });
+            }
+
+            lastStatus = response.status;
             
-            local lang1 = CommandHandler.getTranslateLang1() or "russian"
-            local lang2 = CommandHandler.getTranslateLang2() or "indonesian"
+            if (response.status === 429) {
+                const retryAfter = response.headers.get("Retry-After") || "5";
+                const waitSeconds = parseInt(retryAfter) || 5;
+                
+                if (attempt === KEYS.length - 1) {
+                    const waitTime = waitSeconds >= 60 
+                        ? `${Math.ceil(waitSeconds / 60)} мин` 
+                        : `${waitSeconds} сек`;
+                    return res.json({ 
+                        reply: `⏳ Исчерпан лимит токенов (TPM). Подожди ${waitTime}. Ключ ${keyNumber}/${KEYS.length}` 
+                    });
+                }
+                
+                await sleep(waitSeconds * 1000);
+                currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
+                continue;
+            }
             
-            local body = HttpService:JSONEncode({
-                message = msg,
-                role = "Translate from " .. lang2 .. " to " .. lang1 .. ". Only the translation, nothing else.",
-                playerRole = "guest",
-                playerId = player.UserId
-            })
+            if (response.status === 403) {
+                lastError = `Ключ ${keyNumber} недействителен (403)`;
+                currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
+                continue;
+            }
             
-            local ok, result = pcall(function()
-                return HttpService:PostAsync(PROXY_URL, body, Enum.HttpContentType.ApplicationJson)
-            end)
+            if (response.status === 401) {
+                lastError = `Ключ ${keyNumber} не авторизован (401)`;
+                currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
+                continue;
+            }
             
-            if ok then
-                local success, data = pcall(function()
-                    return HttpService:JSONDecode(result)
-                end)
-                if success and data and data.reply and data.reply ~= "" then
-                    local fullMsg = player.Name .. ": " .. data.reply
-                    bubbleEvent:FireAllClients("maria", "Мария", fullMsg, maria.Head.Position)
-                    historyEvent:FireAllClients("maria", fullMsg, data.reply)
-                end
-            end
+            lastError = `Groq ошибка ${response.status}`;
+            currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
             
-            task.cancel(timeoutThread)
-            isProcessing = false
-            isQueueProcessing = false
-            task.spawn(processQueue)
-            return
-        end
-        
-        local body = HttpService:JSONEncode({
-            message = msg,
-            playerRole = "guest",
-            playerId = player.UserId
-        })
-        pcall(function()
-            HttpService:PostAsync(PROXY_URL, body, Enum.HttpContentType.ApplicationJson)
-        end)
-        task.cancel(timeoutThread)
-        isProcessing = false
-        isQueueProcessing = false
-        task.spawn(processQueue)
-        return
-    end
+        } catch (e) {
+            lastError = `Прокси не может соединиться с Groq: ${e.message}`;
+            currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
+        }
+    }
     
-    if msg:match("!") then
-        CommandHandler.setLastUserMsg(msg)
-    end
-    
-    bubbleEvent:FireAllClients("maria", "Мария", "...", maria.Head.Position)
-    
-    local body
-    if CommandHandler.isTranslatingMode() and not msg:match("!") then
-        local status = MariaData:GetStatus(player)
-        local lang1 = CommandHandler.getTranslateLang1() or "russian"
-        local lang2 = CommandHandler.getTranslateLang2() or "indonesian"
-        
-        local sourceLang = lang1
-        local targetLang = lang2
-        if status ~= "Owner" then
-            sourceLang = lang2
-            targetLang = lang1
-        end
-        
-        body = HttpService:JSONEncode({
-            message = msg,
-            role = "Translate from " .. sourceLang .. " to " .. targetLang .. ". Only the translation, nothing else.",
-            playerRole = playerRole,
-            playerId = player.UserId
-        })
-        
-        local ok, result = pcall(function()
-            return HttpService:PostAsync(PROXY_URL, body, Enum.HttpContentType.ApplicationJson)
-        end)
-        
-        if ok then
-            local success, data = pcall(function()
-                return HttpService:JSONDecode(result)
-            end)
-            if success and data and data.reply and data.reply ~= "" then
-                local fullMsg = player.Name .. ": " .. data.reply
-                bubbleEvent:FireAllClients("maria", "Мария", fullMsg, maria.Head.Position)
-                historyEvent:FireAllClients("maria", fullMsg, data.reply)
-            end
-        end
-        
-        task.cancel(timeoutThread)
-        isProcessing = false
-        isQueueProcessing = false
-        task.spawn(processQueue)
-        return
-    else
-        body = HttpService:JSONEncode({
-            message = msg,
-            role = MariaPrompt.SystemPrompt,
-            playerRole = playerRole,
-            playerId = player.UserId
-        })
-    end
-    
-    local ok, result = pcall(function()
-        return HttpService:PostAsync(PROXY_URL, body, Enum.HttpContentType.ApplicationJson)
-    end)
-    
-    if ok then
-        local success, data = pcall(function()
-            return HttpService:JSONDecode(result)
-        end)
-        if success and data and data.reply and data.reply ~= "" then
-            local reply = data.reply
-            if reply:match("All keys exhausted") or reply:match("TPM") or reply:match("RPD") or reply:match("Error:") then
-                bubbleEvent:FireAllClients("maria", "Мария", reply, maria.Head.Position)
-            else
-                replyEvent:FireClient(player, reply)
-                bubbleEvent:FireAllClients("maria", "Мария", reply, maria.Head.Position)
-                historyEvent:FireAllClients("maria", reply, reply)
-                if not CommandHandler.isWaitingForLang() and MariaData:CanCommand(player) then
-                    CommandHandler.handle(reply, player)
-                end
-            end
-        else
-            bubbleEvent:FireAllClients("maria", "Мария", "Ошибка связи...", maria.Head.Position)
-        end
-    else
-        bubbleEvent:FireAllClients("maria", "Мария", "Ошибка связи...", maria.Head.Position)
-    end
-    
-    task.cancel(timeoutThread)
-    isProcessing = false
-    isQueueProcessing = false
-    task.spawn(processQueue)
-end
+    if (lastError) {
+        res.json({ reply: `❌ ${lastError}. Проверь ключи API.` });
+    } else {
+        res.json({ reply: `⏳ Дневной лимит запросов исчерпан (RPD). Жди сброса.` });
+    }
+});
+
+app.listen(3000);

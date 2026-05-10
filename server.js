@@ -14,30 +14,12 @@ const KEYS = [
 let currentKeyIndex = 0;
 
 const chatHistory = {};
-const chatSummaries = {};
-const chatBlocks = {};
-
 const playerFacts = {};
 const pendingConfirmations = {};
-
-const MAX_OPERATIVE = 50;
-const BLOCK_SIZE = 50;
-const MAX_BLOCKS = 2000;
 
 const guestMessages = {};
 const MAX_GUEST_MESSAGES = 10;
 const guestMessageOrder = [];
-
-const searchTriggers = [
-    "что я говорил", "что ты сказала", "найди в истории",
-    "помнишь", "давно", "в прошлый раз", "тогда",
-    "раньше", "поиск", "!!история", "что было",
-    "какой мой", "что ты знаешь", "расскажи обо мне",
-    "помнишь ли ты", "что я люблю", "что мне нравится",
-    "какой у меня", "мои предпочтения", "что ты запомнила",
-    "как меня зовут", "сколько мне лет", "откуда я",
-    "какой у меня язык", "что ты обо мне знаешь"
-];
 
 function shouldRemember(playerRole) {
     return playerRole === "admin" || playerRole === "vip";
@@ -79,86 +61,26 @@ function extractFactFromMessage(message, playerId, playerRole) {
 
 function applyFact(playerId, factType, value) {
     if (!playerFacts[playerId]) return;
-    
     switch (factType) {
-        case "name":
-        case "nickname":
-            playerFacts[playerId].name = value;
-            break;
-        case "age":
-            playerFacts[playerId].age = value;
-            break;
-        case "from":
-            playerFacts[playerId].from = value;
-            break;
-        case "language":
-            playerFacts[playerId].language = value;
-            break;
+        case "name": case "nickname": playerFacts[playerId].name = value; break;
+        case "age": playerFacts[playerId].age = value; break;
+        case "from": playerFacts[playerId].from = value; break;
+        case "language": playerFacts[playerId].language = value; break;
     }
 }
 
 function buildFactsString(playerId, playerRole) {
     if (!shouldRemember(playerRole)) return "";
     if (!playerFacts[playerId]) return "";
-    
     const f = playerFacts[playerId];
     const parts = [];
-    
     if (f.robloxName) parts.push(`Настоящее имя (Roblox): ${f.robloxName}`);
     if (f.name && f.name !== f.robloxName) parts.push(`Предпочитаемое имя: ${f.name}`);
     else if (f.name) parts.push(`Имя: ${f.name}`);
     if (f.age) parts.push(`Возраст: ${f.age} лет`);
     if (f.from) parts.push(`Откуда: ${f.from}`);
     if (f.language) parts.push(`Язык: ${f.language}`);
-    
     return parts.length > 0 ? "[ФАКТЫ ОБ ИГРОКЕ]\n" + parts.join("\n") + "\n\n" : "";
-}
-
-async function createSummary(messages, key) {
-    const textToSummarize = messages.map(m => `${m.role}: ${m.content}`).join("\n");
-    
-    try {
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + key
-            },
-            body: JSON.stringify({
-                model: "llama-3.1-8b-instant",
-                messages: [
-                    { role: "system", content: "Сделай краткий конспект этого диалога на русском языке. Только суть, не более 2 предложений." },
-                    { role: "user", content: textToSummarize }
-                ],
-                stream: false
-            })
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            return data.choices[0].message.content;
-        }
-        return null;
-    } catch (e) {
-        return null;
-    }
-}
-
-function searchBlocks(playerId, query) {
-    if (!chatBlocks[playerId]) return null;
-    
-    const blocks = chatBlocks[playerId];
-    const queryLower = query.toLowerCase();
-    const results = [];
-    
-    for (let i = 0; i < blocks.length; i++) {
-        const block = blocks[i];
-        if (block.summary.toLowerCase().includes(queryLower)) {
-            results.push({ index: i, summary: block.summary, messages: block.messages });
-        }
-    }
-    
-    return results.length > 0 ? results.slice(0, 3) : null;
 }
 
 app.post("/chat", async (req, res) => {
@@ -177,8 +99,6 @@ app.post("/chat", async (req, res) => {
     
     if (saveMemory) {
         if (!chatHistory[playerId]) chatHistory[playerId] = [];
-        if (!chatSummaries[playerId]) chatSummaries[playerId] = "";
-        if (!chatBlocks[playerId]) chatBlocks[playerId] = [];
         if (!playerFacts[playerId]) {
             playerFacts[playerId] = { name: "", age: "", from: "", language: "", robloxName: "" };
         }
@@ -258,7 +178,6 @@ app.post("/chat", async (req, res) => {
     let finalMessage = message;
     
     if (isTranslation) {
-        finalMessage = message;
         systemPrompt = userRole;
         model = "llama-3.3-70b-versatile";
     } else if (isCommand) {
@@ -266,14 +185,12 @@ app.post("/chat", async (req, res) => {
         systemPrompt = userRole || "You are Maria. Convert messages to commands: [command] [target] [params].";
         model = "llama-3.1-8b-instant";
     } else if (translateForGuest && playerRole === "admin") {
-        finalMessage = message.replace(/!/g, "").trim();
         systemPrompt = "Translate to the language the owner is speaking. Only translation.";
         model = "llama-3.3-70b-versatile";
     } else if (translateFromGuest && playerRole === "admin") {
         let guestMsg = "";
         for (const [id, msg] of Object.entries(guestMessages)) {
-            guestMsg = msg;
-            break;
+            guestMsg = msg; break;
         }
         if (guestMsg) {
             finalMessage = "Translate this guest message to Russian: " + guestMsg;
@@ -283,22 +200,12 @@ app.post("/chat", async (req, res) => {
         systemPrompt = "Translate to Russian. Only translation.";
         model = "llama-3.3-70b-versatile";
     } else {
-        systemPrompt = "You are Maria, a devoted maid. The admin is your master. Call him 'master' (or 'хозяин' in Russian, 'tuan' in Indonesian, 'amo' in Spanish). You already know all the players. Never introduce yourself. Never say 'I am your maid' or 'how can I help you'. Just talk naturally like you've known them forever. Reply in the SAME language the user writes. Keep answers short and natural. Be cute and loyal.";
+        systemPrompt = "You are Maria, a devoted maid. The admin is your master. Reply in the SAME language the user writes. Keep answers short and natural. Be cute and loyal.";
         model = "llama-3.3-70b-versatile";
     }
     
     if (playerRole === "vip" && isCommand) {
         systemPrompt = (userRole || "You are Maria.") + "\nOnly obey this VIP if admin allowed it. If unsure, refuse.";
-    }
-    
-    let isSearchQuery = false;
-    if (!isCommand && !isTranslation && saveMemory) {
-        for (const trigger of searchTriggers) {
-            if (message.toLowerCase().includes(trigger)) {
-                isSearchQuery = true;
-                break;
-            }
-        }
     }
     
     let messages = [];
@@ -311,31 +218,10 @@ app.post("/chat", async (req, res) => {
         }
     }
     
-    if (saveMemory && !isCommand && !isTranslation && !translateForGuest && !translateFromGuest) {
-        if (isSearchQuery && chatBlocks[playerId].length > 0) {
-            const foundBlocks = searchBlocks(playerId, message);
-            
-            if (foundBlocks) {
-                let searchContext = "[ИСТОРИЯ ДИАЛОГА]\n";
-                if (chatSummaries[playerId]) {
-                    searchContext += "Общий конспект: " + chatSummaries[playerId] + "\n\n";
-                }
-                searchContext += "Найденные блоки по запросу:\n";
-                for (const block of foundBlocks) {
-                    searchContext += "---\n" + block.messages.map(m => `${m.role}: ${m.content}`).join("\n") + "\n";
-                }
-                messages.push({ role: "system", content: searchContext });
-            } else {
-                const recentHistory = chatHistory[playerId].slice(-MAX_OPERATIVE);
-                for (const oldMsg of recentHistory) {
-                    messages.push(oldMsg);
-                }
-            }
-        } else {
-            const recentHistory = chatHistory[playerId].slice(-MAX_OPERATIVE);
-            for (const oldMsg of recentHistory) {
-                messages.push(oldMsg);
-            }
+    if (saveMemory && !isCommand && !isTranslation) {
+        const recentHistory = chatHistory[playerId].slice(-20);
+        for (const oldMsg of recentHistory) {
+            messages.push(oldMsg);
         }
     }
     
@@ -344,83 +230,33 @@ app.post("/chat", async (req, res) => {
     try {
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + key
-            },
-            body: JSON.stringify({
-                model: model,
-                messages: messages,
-                stream: false
-            })
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+            body: JSON.stringify({ model: model, messages: messages, stream: false })
         });
 
         if (response.ok) {
             const data = await response.json();
-            if (data.choices && data.choices[0]) {
-                const reply = data.choices[0].message.content;
-                
-                if (saveMemory) {
-                    chatHistory[playerId].push({ role: "user", content: finalMessage });
-                    chatHistory[playerId].push({ role: "assistant", content: reply });
-                    if (chatHistory[playerId].length > MAX_OPERATIVE * 2) {
-                        chatHistory[playerId] = chatHistory[playerId].slice(-MAX_OPERATIVE * 2);
-                    }
-                    
-                    if (!isCommand && !isTranslation && !translateForGuest && !translateFromGuest && !isSearchQuery) {
-                        if (chatHistory[playerId].length >= BLOCK_SIZE * 2) {
-                            const blockMessages = chatHistory[playerId].splice(0, BLOCK_SIZE * 2);
-                            
-                            createSummary(blockMessages, key).then(summary => {
-                                if (summary) {
-                                    chatBlocks[playerId].push({
-                                        summary: summary,
-                                        messages: blockMessages
-                                    });
-                                    
-                                    if (chatSummaries[playerId]) {
-                                        chatSummaries[playerId] += " " + summary;
-                                    } else {
-                                        chatSummaries[playerId] = summary;
-                                    }
-                                    
-                                    while (chatBlocks[playerId].length > MAX_BLOCKS) {
-                                        chatBlocks[playerId].shift();
-                                    }
-                                }
-                            });
-                        }
-                    }
+            const reply = data.choices[0].message.content;
+            
+            if (saveMemory && !isCommand && !isTranslation) {
+                chatHistory[playerId].push({ role: "user", content: finalMessage });
+                chatHistory[playerId].push({ role: "assistant", content: reply });
+                if (chatHistory[playerId].length > 40) {
+                    chatHistory[playerId] = chatHistory[playerId].slice(-40);
                 }
-                
-                return res.json({ reply: reply });
             }
-            return res.json({ reply: "❌ Ошибка Groq: пустой ответ" });
+            
+            return res.json({ reply: reply });
         }
 
         if (response.status === 429) {
-            const retryAfter = response.headers.get("Retry-After") || "5";
-            const waitSeconds = parseInt(retryAfter) || 5;
-            const waitTime = waitSeconds >= 60 
-                ? `${Math.ceil(waitSeconds / 60)} мин` 
-                : `${waitSeconds} сек`;
-            return res.json({ 
-                reply: `⏳ Ключ ${keyNumber} исчерпал лимит. Ждать ${waitTime}.` 
-            });
+            return res.json({ reply: `⏳ Ключ ${keyNumber} исчерпал лимит.` });
         }
 
-        if (response.status === 403) {
-            return res.json({ reply: `❌ Ключ ${keyNumber} недействителен (403).` });
-        }
-        
-        if (response.status === 401) {
-            return res.json({ reply: `❌ Ключ ${keyNumber} не авторизован (401).` });
-        }
-
-        return res.json({ reply: `❌ Ошибка Groq (${response.status}).` });
+        return res.json({ reply: "Ошибка: " + response.status });
 
     } catch (e) {
-        return res.json({ reply: `❌ Прокси не может соединиться с Groq.` });
+        return res.json({ reply: "Ошибка связи" });
     }
 });
 

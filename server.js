@@ -17,6 +17,7 @@ const chatHistory = {};
 app.post("/chat", async (req, res) => {
     currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
     const key = KEYS[currentKeyIndex];
+    const keyNumber = currentKeyIndex + 1;
     
     let message = req.body.message || "Hello";
     const userRole = req.body.role || "";
@@ -43,10 +44,10 @@ app.post("/chat", async (req, res) => {
         model = "llama-3.3-70b-versatile";
     } else if (isCommand) {
         message = message.replace(/!/g, "").trim();
-        systemPrompt = userRole || "Convert to command.";
+        systemPrompt = userRole || "You are Maria. Convert messages to commands: [command] [target] [params].";
         model = "llama-3.1-8b-instant";
     } else {
-        systemPrompt = "You are Maria, a maid. Reply in SAME language. Be short.";
+        systemPrompt = "You are Maria, a devoted maid. The admin is your master. Reply in the SAME language the user writes. Keep answers short and natural. Be cute and loyal.";
         model = "llama-3.3-70b-versatile";
     }
     
@@ -77,15 +78,23 @@ app.post("/chat", async (req, res) => {
             if (saveMemory && !isCommand && !isTranslation) {
                 chatHistory[playerId].push({ role: "user", content: message });
                 chatHistory[playerId].push({ role: "assistant", content: reply });
+                if (chatHistory[playerId].length > 20) {
+                    chatHistory[playerId] = chatHistory[playerId].slice(-20);
+                }
                 console.log("SAVED. TOTAL:", chatHistory[playerId].length);
             }
             
             return res.json({ reply: reply });
         }
 
-        return res.json({ reply: "Err: " + response.status });
+        if (response.status === 429) {
+            return res.json({ reply: "Ключ " + keyNumber + " исчерпан." });
+        }
+
+        return res.json({ reply: "Ошибка: " + response.status });
+
     } catch (e) {
-        return res.json({ reply: "Err" });
+        return res.json({ reply: "Ошибка связи" });
     }
 });
 

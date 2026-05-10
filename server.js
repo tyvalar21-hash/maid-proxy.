@@ -14,13 +14,16 @@ const KEYS = [
 let currentKeyIndex = 0;
 const chatHistory = {};
 
-function compressMessage(msg) {
-    if (!msg || !msg.content) return msg;
+function cleanMessage(msg) {
+    if (!msg || !msg.content) return { role: "user", content: "" };
     let content = msg.content;
-    content = content.replace(/\n+/g, ' ');
-    content = content.replace(/\s+/g, ' ');
-    if (content.length > 50) {
-        content = content.substring(0, 50);
+    content = content.replace(/[^a-zA-Z0-9\u0400-\u04FFа-яА-ЯёЁ\s.,!?\-:;()]/g, '');
+    content = content.replace(/\s+/g, ' ').trim();
+    if (content.length > 60) {
+        content = content.substring(0, 60);
+    }
+    if (content.length === 0) {
+        content = "...";
     }
     return { role: msg.role, content: content };
 }
@@ -81,9 +84,10 @@ app.post("/chat", async (req, res) => {
     messages.push({ role: "system", content: systemPrompt });
     
     if (saveMemory && !isCommand && !isTranslation && !translateForGuest && !translateFromGuest) {
-        const history = chatHistory[playerId].slice(-24);
+        const history = chatHistory[playerId].slice(-6);
         for (const msg of history) {
-            messages.push(compressMessage(msg));
+            const cleaned = cleanMessage(msg);
+            messages.push(cleaned);
         }
     }
     

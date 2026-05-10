@@ -304,7 +304,6 @@ app.post("/chat", async (req, res) => {
     let messages = [];
     messages.push({ role: "system", content: systemPrompt });
     
-    // Факты добавляем ВСЕГДА (если есть)
     if (saveMemory) {
         const factsStr = buildFactsString(playerId, playerRole);
         if (factsStr) {
@@ -313,34 +312,9 @@ app.post("/chat", async (req, res) => {
     }
     
     if (!isCommand && !isTranslation && !translateForGuest && !translateFromGuest && saveMemory) {
-        
-        if (isSearchQuery && chatBlocks[playerId].length > 0) {
-            const foundBlocks = searchBlocks(playerId, message);
-            
-            if (foundBlocks) {
-                let searchContext = "[ИСТОРИЯ ДИАЛОГА]\n";
-                if (chatSummaries[playerId]) {
-                    searchContext += "Общий конспект: " + chatSummaries[playerId] + "\n\n";
-                }
-                searchContext += "Найденные блоки по запросу:\n";
-                for (const block of foundBlocks) {
-                    searchContext += "---\n" + block.messages.map(m => `${m.role}: ${m.content}`).join("\n") + "\n";
-                }
-                messages.push({ role: "system", content: searchContext });
-            } else {
-                if (chatSummaries[playerId]) {
-                    messages.push({ role: "system", content: "[ПАМЯТЬ] " + chatSummaries[playerId] });
-                }
-            }
-        } else {
-            if (chatSummaries[playerId]) {
-                messages.push({ role: "system", content: "[ПАМЯТЬ] " + chatSummaries[playerId] });
-            }
-            
-            const recentHistory = chatHistory[playerId].slice(-MAX_OPERATIVE);
-            for (const oldMsg of recentHistory) {
-                messages.push(oldMsg);
-            }
+        const recentHistory = chatHistory[playerId].slice(-10);
+        for (const oldMsg of recentHistory) {
+            messages.push(oldMsg);
         }
     }
     
@@ -370,31 +344,6 @@ app.post("/chat", async (req, res) => {
                     chatHistory[playerId].push({ role: "assistant", content: reply });
                     if (chatHistory[playerId].length > MAX_OPERATIVE * 2) {
                         chatHistory[playerId] = chatHistory[playerId].slice(-MAX_OPERATIVE * 2);
-                    }
-                    
-                    if (!isCommand && !isTranslation && !translateForGuest && !translateFromGuest && !isSearchQuery) {
-                        if (chatHistory[playerId].length >= BLOCK_SIZE * 2) {
-                            const blockMessages = chatHistory[playerId].splice(0, BLOCK_SIZE * 2);
-                            
-                            createSummary(blockMessages, key).then(summary => {
-                                if (summary) {
-                                    chatBlocks[playerId].push({
-                                        summary: summary,
-                                        messages: blockMessages
-                                    });
-                                    
-                                    if (chatSummaries[playerId]) {
-                                        chatSummaries[playerId] += " " + summary;
-                                    } else {
-                                        chatSummaries[playerId] = summary;
-                                    }
-                                    
-                                    while (chatBlocks[playerId].length > MAX_BLOCKS) {
-                                        chatBlocks[playerId].shift();
-                                    }
-                                }
-                            });
-                        }
                     }
                 }
                 

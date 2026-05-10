@@ -49,7 +49,7 @@ async function send() {
             body: JSON.stringify({
                 message: msg,
                 history: history.slice(-10),
-                role: "You are Maria, a maid. Reply same language. Short.",
+                role: "test",
                 playerRole: "admin",
                 playerId: "test",
                 playerName: "Test"
@@ -128,7 +128,7 @@ app.post("/chat", async (req, res) => {
     
     if (saveMemory && !isCommand && !isTranslation && !translateForGuest && !translateFromGuest) {
         for (const msg of history) {
-            messages.push(msg);
+            messages.push({ role: "user", content: msg.content });
         }
     }
     

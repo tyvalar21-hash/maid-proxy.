@@ -8,11 +8,7 @@ const KEYS = [
     process.env.GROQ_API_KEY_3,
     process.env.GROQ_API_KEY_4,
     process.env.GROQ_API_KEY_5,
-    process.env.GROQ_API_KEY_6,
-    process.env.GROQ_API_KEY_7,
-    process.env.GROQ_API_KEY_8,
-    process.env.GROQ_API_KEY_9,
-    process.env.GROQ_API_KEY_10
+    process.env.GROQ_API_KEY_6
 ].filter(Boolean);
 
 let currentKeyIndex = 0;

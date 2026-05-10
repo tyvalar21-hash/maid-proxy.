@@ -42,30 +42,30 @@ app.post("/chat", async (req, res) => {
         model = "llama-3.3-70b-versatile";
     } else if (isCommand) {
         message = message.replace(/!/g, "").trim();
-        systemPrompt = userRole || "You are Maria. Convert messages to commands: [command] [target] [params].";
+        systemPrompt = userRole || "Convert to command.";
         model = "llama-3.1-8b-instant";
     } else {
-        systemPrompt = "You are Maria, a devoted maid. The admin is your master. Reply in the SAME language the user writes. Keep answers short and natural. Be cute and loyal.";
+        systemPrompt = "You are Maria, a maid. Reply same language. Short.";
         model = "llama-3.3-70b-versatile";
     }
     
-    let messages = [];
-    messages.push({ role: "system", content: systemPrompt });
-    
+    // НЕ добавляем историю в промпт — только сохраняем
     if (saveMemory && !isCommand && !isTranslation) {
-        const history = chatHistory[playerId].slice(-10);
-        for (const msg of history) {
-            messages.push(msg);
-        }
+        chatHistory[playerId].push({ role: "user", content: message });
     }
-    
-    messages.push({ role: "user", content: message });
     
     try {
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
-            body: JSON.stringify({ model: model, messages: messages, stream: false })
+            body: JSON.stringify({
+                model: model,
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: message }
+                ],
+                stream: false
+            })
         });
 
         if (response.ok) {
@@ -73,11 +73,7 @@ app.post("/chat", async (req, res) => {
             const reply = data.choices[0].message.content;
             
             if (saveMemory && !isCommand && !isTranslation) {
-                chatHistory[playerId].push({ role: "user", content: message });
                 chatHistory[playerId].push({ role: "assistant", content: reply });
-                if (chatHistory[playerId].length > 20) {
-                    chatHistory[playerId] = chatHistory[playerId].slice(-20);
-                }
             }
             
             return res.json({ reply: reply });

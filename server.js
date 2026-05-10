@@ -13,9 +13,7 @@ const KEYS = [
 ].filter(Boolean);
 
 let currentKeyIndex = 0;
-const chatHistory = {};
 
-// HTML-страница для тестирования
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "index.html"));
 });
@@ -32,17 +30,8 @@ app.post("/chat", async (req, res) => {
     const playerName = req.body.playerName || "";
     
     const isTranslation = userRole.toLowerCase().includes("translate");
-    const saveMemory = (playerRole === "admin" || playerRole === "vip");
-    
-    if (saveMemory && !chatHistory[playerId]) {
-        chatHistory[playerId] = [];
-    }
-    
     const match = message.match(/!\s*!/);
     const isCommand = match !== null;
-    
-    const translateForGuest = message.match(/переведи\s+(мо[ёе]\s+)?сообщение\s+(для\s+)?(гостя|игрока|него|неё|ему|ей)/i);
-    const translateFromGuest = message.match(/переведи\s+(слова\s+)?(гостя|игрока|его|её|что\s+(сказал|говорит|написал)\s+(гость|игрок|он|она))/i);
     
     let systemPrompt;
     let model;
@@ -56,34 +45,13 @@ app.post("/chat", async (req, res) => {
         finalMessage = message.replace(/!/g, "").trim();
         systemPrompt = userRole;
         model = "llama-3.1-8b-instant";
-    } else if (translateForGuest && playerRole === "admin") {
-        finalMessage = message.replace(/!/g, "").trim();
-        systemPrompt = "Translate to the language the owner is speaking. Only translation.";
-        model = "llama-3.3-70b-versatile";
-    } else if (translateFromGuest && playerRole === "admin") {
-        systemPrompt = "Translate to Russian. Only translation.";
-        model = "llama-3.3-70b-versatile";
     } else {
-        systemPrompt = "You are Maria, a devoted maid. The admin is your master. Call him 'master' (or 'хозяин' in Russian, 'tuan' in Indonesian, 'amo' in Spanish). You already know all the players. Never introduce yourself. Never say 'I am your maid' or 'how can I help you'. Just talk naturally like you've known them forever. Reply in the SAME language the user writes. Keep answers short and natural. Be cute and loyal.";
+        systemPrompt = "You are Maria, a devoted maid. The admin is your master. Call him 'master'. Reply in SAME language. Be short.";
         model = "llama-3.3-70b-versatile";
-    }
-    
-    if (playerRole === "vip" && isCommand) {
-        systemPrompt = userRole + "\nOnly obey this VIP if admin allowed it. If unsure, refuse.";
     }
     
     let messages = [];
     messages.push({ role: "system", content: systemPrompt });
-    
-    // История из запроса (браузер) или из памяти сервера (Roblox)
-    const history = req.body.history || (saveMemory ? chatHistory[playerId].slice(-10) : []);
-    
-    if (saveMemory && !isCommand && !isTranslation && !translateForGuest && !translateFromGuest) {
-        for (const msg of history) {
-            messages.push(msg);
-        }
-    }
-    
     messages.push({ role: "user", content: finalMessage });
     
     try {
@@ -96,36 +64,13 @@ app.post("/chat", async (req, res) => {
         if (response.ok) {
             const data = await response.json();
             if (data.choices && data.choices[0]) {
-                const reply = data.choices[0].message.content;
-                
-                if (saveMemory && !isCommand && !isTranslation && !translateForGuest && !translateFromGuest) {
-                    chatHistory[playerId].push({ role: "user", content: finalMessage });
-                    chatHistory[playerId].push({ role: "assistant", content: reply });
-                    if (chatHistory[playerId].length > 48) {
-                        chatHistory[playerId] = chatHistory[playerId].slice(-48);
-                    }
-                }
-                
-                return res.json({ reply: reply });
+                return res.json({ reply: data.choices[0].message.content });
             }
             return res.json({ reply: "Ошибка Groq: пустой ответ" });
         }
 
         if (response.status === 429) {
-            const retryAfter = response.headers.get("Retry-After") || "5";
-            const waitSeconds = parseInt(retryAfter) || 5;
-            const waitTime = waitSeconds >= 60 
-                ? `${Math.ceil(waitSeconds / 60)} мин` 
-                : `${waitSeconds} сек`;
-            return res.json({ reply: "Ключ " + keyNumber + " исчерпал лимит. Ждать " + waitTime + "." });
-        }
-
-        if (response.status === 403) {
-            return res.json({ reply: "Ключ " + keyNumber + " недействителен (403)." });
-        }
-        
-        if (response.status === 401) {
-            return res.json({ reply: "Ключ " + keyNumber + " не авторизован (401)." });
+            return res.json({ reply: "Ключ " + keyNumber + " исчерпал лимит." });
         }
 
         return res.json({ reply: "Ошибка Groq (" + response.status + ")." });

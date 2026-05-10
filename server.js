@@ -3,31 +3,19 @@ const path = require("path");
 const app = express();
 app.use(express.json());
 
-const KEYS = [
-    process.env.GROQ_API_KEY_1,
-    process.env.GROQ_API_KEY_2,
-    process.env.GROQ_API_KEY_3,
-    process.env.GROQ_API_KEY_4,
-    process.env.GROQ_API_KEY_5,
-    process.env.GROQ_API_KEY_6
-].filter(Boolean);
-
-let currentKeyIndex = 0;
+const GROQ_API_KEY = process.env.GROQ_API_KEY_1 || "";
 
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "index.html"));
 });
 
 app.post("/chat", async (req, res) => {
-    currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
-    const key = KEYS[currentKeyIndex];
-    const keyNumber = currentKeyIndex + 1;
+    if (!GROQ_API_KEY) {
+        return res.json({ reply: "Ключ не задан. Добавь GROQ_API_KEY_1 в переменные окружения Render." });
+    }
     
     let message = req.body.message || "Hello";
     const userRole = req.body.role || "";
-    const playerRole = req.body.playerRole || "guest";
-    const playerId = req.body.playerId || "unknown";
-    const playerName = req.body.playerName || "";
     
     const isTranslation = userRole.toLowerCase().includes("translate");
     const match = message.match(/!\s*!/);
@@ -35,29 +23,27 @@ app.post("/chat", async (req, res) => {
     
     let systemPrompt;
     let model;
-    let finalMessage = message;
     
     if (isTranslation) {
-        finalMessage = message;
         systemPrompt = userRole;
         model = "llama-3.3-70b-versatile";
     } else if (isCommand) {
-        finalMessage = message.replace(/!/g, "").trim();
+        message = message.replace(/!/g, "").trim();
         systemPrompt = userRole;
         model = "llama-3.1-8b-instant";
     } else {
-        systemPrompt = "You are Maria, a devoted maid. The admin is your master. Call him 'master'. Reply in SAME language. Be short.";
+        systemPrompt = "You are Maria, a devoted maid. Reply in SAME language. Be short.";
         model = "llama-3.3-70b-versatile";
     }
     
     let messages = [];
     messages.push({ role: "system", content: systemPrompt });
-    messages.push({ role: "user", content: finalMessage });
+    messages.push({ role: "user", content: message });
     
     try {
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + GROQ_API_KEY },
             body: JSON.stringify({ model: model, messages: messages, stream: false })
         });
 
@@ -70,7 +56,11 @@ app.post("/chat", async (req, res) => {
         }
 
         if (response.status === 429) {
-            return res.json({ reply: "Ключ " + keyNumber + " исчерпал лимит." });
+            return res.json({ reply: "Ключ исчерпал лимит. Жди." });
+        }
+        
+        if (response.status === 401) {
+            return res.json({ reply: "Ключ недействителен (401). Проверь ключ." });
         }
 
         return res.json({ reply: "Ошибка Groq (" + response.status + ")." });

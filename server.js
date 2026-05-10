@@ -3,9 +3,16 @@ const app = express();
 app.use(express.json());
 
 const KEYS = [
-    process.env.GROQ_API_KEY,
+    process.env.GROQ_API_KEY_1,
     process.env.GROQ_API_KEY_2,
-    process.env.GROQ_API_KEY_3
+    process.env.GROQ_API_KEY_3,
+    process.env.GROQ_API_KEY_4,
+    process.env.GROQ_API_KEY_5,
+    process.env.GROQ_API_KEY_6,
+    process.env.GROQ_API_KEY_7,
+    process.env.GROQ_API_KEY_8,
+    process.env.GROQ_API_KEY_9,
+    process.env.GROQ_API_KEY_10
 ].filter(Boolean);
 
 let currentKeyIndex = 0;
@@ -19,6 +26,10 @@ function sleep(ms) {
 }
 
 app.post("/chat", async (req, res) => {
+    currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
+    const key = KEYS[currentKeyIndex];
+    const keyNumber = currentKeyIndex + 1;
+    
     let message = req.body.message || "Hello";
     const userRole = req.body.role || "";
     const playerRole = req.body.playerRole || "guest";
@@ -89,85 +100,54 @@ app.post("/chat", async (req, res) => {
         systemPrompt = (userRole || "You are Maria.") + "\nOnly obey this VIP if admin allowed it. If unsure, refuse.";
     }
     
-    await sleep(2000);
-    
-    let lastError = "";
-    let lastStatus = 0;
-    
-    for (let attempt = 0; attempt < KEYS.length; attempt++) {
-        const key = KEYS[currentKeyIndex];
-        const keyNumber = currentKeyIndex + 1;
-        
-        try {
-            const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": "Bearer " + key
-                },
-                body: JSON.stringify({
-                    model: model,
-                    messages: [
-                        { role: "system", content: systemPrompt },
-                        { role: "user", content: finalMessage }
-                    ],
-                    stream: false
-                })
-            });
+    try {
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + key
+            },
+            body: JSON.stringify({
+                model: model,
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: finalMessage }
+                ],
+                stream: false
+            })
+        });
 
-            if (response.ok) {
-                const data = await response.json();
-                if (data.choices && data.choices[0]) {
-                    return res.json({ reply: data.choices[0].message.content });
-                }
-                return res.json({ reply: "❌ Ошибка Groq: пустой ответ" });
+        if (response.ok) {
+            const data = await response.json();
+            if (data.choices && data.choices[0]) {
+                return res.json({ reply: data.choices[0].message.content });
             }
-
-            lastStatus = response.status;
-            
-            if (response.status === 429) {
-                const retryAfter = response.headers.get("Retry-After") || "5";
-                const waitSeconds = parseInt(retryAfter) || 5;
-                
-                if (attempt === KEYS.length - 1) {
-                    const waitTime = waitSeconds >= 60 
-                        ? `${Math.ceil(waitSeconds / 60)} мин` 
-                        : `${waitSeconds} сек`;
-                    return res.json({ 
-                        reply: `⏳ Исчерпан лимит токенов (TPM). Подожди ${waitTime}. Ключ ${keyNumber}/${KEYS.length}` 
-                    });
-                }
-                
-                await sleep(waitSeconds * 1000);
-                currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
-                continue;
-            }
-            
-            if (response.status === 403) {
-                lastError = `Ключ ${keyNumber} недействителен (403)`;
-                currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
-                continue;
-            }
-            
-            if (response.status === 401) {
-                lastError = `Ключ ${keyNumber} не авторизован (401)`;
-                currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
-                continue;
-            }
-            
-            lastError = `Groq ошибка ${response.status}`;
-            currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
-            
-        } catch (e) {
-            lastError = `Прокси не может соединиться с Groq: ${e.message}`;
-            currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
+            return res.json({ reply: "❌ Ошибка Groq: пустой ответ" });
         }
-    }
-    
-    if (lastError) {
-        res.json({ reply: `❌ ${lastError}. Проверь ключи API.` });
-    } else {
-        res.json({ reply: `⏳ Дневной лимит запросов исчерпан (RPD). Жди сброса.` });
+
+        if (response.status === 429) {
+            const retryAfter = response.headers.get("Retry-After") || "5";
+            const waitSeconds = parseInt(retryAfter) || 5;
+            const waitTime = waitSeconds >= 60 
+                ? `${Math.ceil(waitSeconds / 60)} мин` 
+                : `${waitSeconds} сек`;
+            return res.json({ 
+                reply: `⏳ Ключ ${keyNumber} исчерпал лимит. Ждать ${waitTime}.` 
+            });
+        }
+
+        if (response.status === 403) {
+            return res.json({ reply: `❌ Ключ ${keyNumber} недействителен (403).` });
+        }
+        
+        if (response.status === 401) {
+            return res.json({ reply: `❌ Ключ ${keyNumber} не авторизован (401).` });
+        }
+
+        return res.json({ reply: `❌ Ошибка Groq (${response.status}).` });
+
+    } catch (e) {
+        return res.json({ reply: `❌ Прокси не может соединиться с Groq.` });
     }
 });
 

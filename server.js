@@ -3,41 +3,91 @@ const app = express();
 app.use(express.json());
 
 const KEYS = [
-    process.env.GROQ_API_KEY_1, process.env.GROQ_API_KEY_2, process.env.GROQ_API_KEY_3,
-    process.env.GROQ_API_KEY_4, process.env.GROQ_API_KEY_5, process.env.GROQ_API_KEY_6
+    process.env.GROQ_API_KEY_1,
+    process.env.GROQ_API_KEY_2,
+    process.env.GROQ_API_KEY_3,
+    process.env.GROQ_API_KEY_4,
+    process.env.GROQ_API_KEY_5,
+    process.env.GROQ_API_KEY_6
 ].filter(Boolean);
 
 let currentKeyIndex = 0;
+const chatHistory = {};
+
+function compressMessage(msg) {
+    if (!msg || !msg.content) return msg;
+    let content = msg.content;
+    content = content.replace(/\n+/g, ' ');
+    content = content.replace(/\s+/g, ' ');
+    if (content.length > 50) {
+        content = content.substring(0, 50);
+    }
+    return { role: msg.role, content: content };
+}
 
 app.post("/chat", async (req, res) => {
     currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
     const key = KEYS[currentKeyIndex];
+    const keyNumber = currentKeyIndex + 1;
     
     let message = req.body.message || "Hello";
-    const history = req.body.history || [];
     const userRole = req.body.role || "";
-    const isCommand = message.match(/!\s*!/);
+    const playerRole = req.body.playerRole || "guest";
+    const playerId = req.body.playerId || "unknown";
+    const playerName = req.body.playerName || "";
+    
+    const isTranslation = userRole.toLowerCase().includes("translate");
+    const saveMemory = (playerRole === "admin" || playerRole === "vip");
+    
+    if (saveMemory && !chatHistory[playerId]) {
+        chatHistory[playerId] = [];
+    }
+    
+    const match = message.match(/!\s*!/);
+    const isCommand = match !== null;
+    
+    const translateForGuest = message.match(/переведи\s+(мо[ёе]\s+)?сообщение\s+(для\s+)?(гостя|игрока|него|неё|ему|ей)/i);
+    const translateFromGuest = message.match(/переведи\s+(слова\s+)?(гостя|игрока|его|её|что\s+(сказал|говорит|написал)\s+(гость|игрок|он|она))/i);
     
     let systemPrompt;
     let model;
+    let finalMessage = message;
     
-    if (isCommand) {
-        message = message.replace(/!/g, "").trim();
-        systemPrompt = "Convert to [command] [target] [params].";
+    if (isTranslation) {
+        finalMessage = message;
+        systemPrompt = userRole;
+        model = "llama-3.3-70b-versatile";
+    } else if (isCommand) {
+        finalMessage = message.replace(/!/g, "").trim();
+        systemPrompt = userRole;
         model = "llama-3.1-8b-instant";
+    } else if (translateForGuest && playerRole === "admin") {
+        finalMessage = message.replace(/!/g, "").trim();
+        systemPrompt = "Translate to the language the owner is speaking. Only translation.";
+        model = "llama-3.3-70b-versatile";
+    } else if (translateFromGuest && playerRole === "admin") {
+        systemPrompt = "Translate to Russian. Only translation.";
+        model = "llama-3.3-70b-versatile";
     } else {
-        systemPrompt = "You are Maria, a devoted maid. Reply in SAME language. Be short.";
+        systemPrompt = "You are Maria, a devoted maid. The admin is your master. Call him 'master' (or 'хозяин' in Russian, 'tuan' in Indonesian, 'amo' in Spanish). You already know all the players. Never introduce yourself. Never say 'I am your maid' or 'how can I help you'. Just talk naturally like you've known them forever. Reply in the SAME language the user writes. Keep answers short and natural. Be cute and loyal.";
         model = "llama-3.3-70b-versatile";
     }
     
-    let messages = [{ role: "system", content: systemPrompt }];
-    
-    // Добавляем историю из запроса
-    for (const msg of history) {
-        messages.push(msg);
+    if (playerRole === "vip" && isCommand) {
+        systemPrompt = userRole + "\nOnly obey this VIP if admin allowed it. If unsure, refuse.";
     }
     
-    messages.push({ role: "user", content: message });
+    let messages = [];
+    messages.push({ role: "system", content: systemPrompt });
+    
+    if (saveMemory && !isCommand && !isTranslation && !translateForGuest && !translateFromGuest) {
+        const history = chatHistory[playerId].slice(-24);
+        for (const msg of history) {
+            messages.push(compressMessage(msg));
+        }
+    }
+    
+    messages.push({ role: "user", content: finalMessage });
     
     try {
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -48,12 +98,43 @@ app.post("/chat", async (req, res) => {
 
         if (response.ok) {
             const data = await response.json();
-            return res.json({ reply: data.choices[0].message.content });
+            if (data.choices && data.choices[0]) {
+                const reply = data.choices[0].message.content;
+                
+                if (saveMemory && !isCommand && !isTranslation && !translateForGuest && !translateFromGuest) {
+                    chatHistory[playerId].push({ role: "user", content: finalMessage });
+                    chatHistory[playerId].push({ role: "assistant", content: reply });
+                    if (chatHistory[playerId].length > 48) {
+                        chatHistory[playerId] = chatHistory[playerId].slice(-48);
+                    }
+                }
+                
+                return res.json({ reply: reply });
+            }
+            return res.json({ reply: "Ошибка Groq: пустой ответ" });
+        }
+
+        if (response.status === 429) {
+            const retryAfter = response.headers.get("Retry-After") || "5";
+            const waitSeconds = parseInt(retryAfter) || 5;
+            const waitTime = waitSeconds >= 60 
+                ? `${Math.ceil(waitSeconds / 60)} мин` 
+                : `${waitSeconds} сек`;
+            return res.json({ reply: "Ключ " + keyNumber + " исчерпал лимит. Ждать " + waitTime + "." });
+        }
+
+        if (response.status === 403) {
+            return res.json({ reply: "Ключ " + keyNumber + " недействителен (403)." });
         }
         
-        return res.json({ reply: "Ошибка: " + response.status });
+        if (response.status === 401) {
+            return res.json({ reply: "Ключ " + keyNumber + " не авторизован (401)." });
+        }
+
+        return res.json({ reply: "Ошибка Groq (" + response.status + ")." });
+
     } catch (e) {
-        return res.json({ reply: "Ошибка связи" });
+        return res.json({ reply: "Прокси не может соединиться с Groq." });
     }
 });
 

@@ -14,20 +14,6 @@ const KEYS = [
 let currentKeyIndex = 0;
 const chatHistory = {};
 
-function cleanMessage(msg) {
-    if (!msg || !msg.content) return { role: "user", content: "" };
-    let content = msg.content;
-    content = content.replace(/[^a-zA-Z0-9\u0400-\u04FFа-яА-ЯёЁ\s.,!?\-:;()]/g, '');
-    content = content.replace(/\s+/g, ' ').trim();
-    if (content.length > 60) {
-        content = content.substring(0, 60);
-    }
-    if (content.length === 0) {
-        content = "...";
-    }
-    return { role: msg.role, content: content };
-}
-
 app.post("/chat", async (req, res) => {
     currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
     const key = KEYS[currentKeyIndex];
@@ -86,8 +72,7 @@ app.post("/chat", async (req, res) => {
     if (saveMemory && !isCommand && !isTranslation && !translateForGuest && !translateFromGuest) {
         const history = chatHistory[playerId].slice(-6);
         for (const msg of history) {
-            const cleaned = cleanMessage(msg);
-            messages.push(cleaned);
+            messages.push({ role: "user", content: msg.content });
         }
     }
     

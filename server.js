@@ -34,8 +34,6 @@ app.post("/chat", async (req, res) => {
     const match = message.match(/!\s*!/);
     const isCommand = match !== null;
     
-    console.log("ID:", playerId, "ROLE:", playerRole, "HIST:", saveMemory ? chatHistory[playerId].length : "N/A");
-    
     let systemPrompt;
     let model;
     
@@ -56,7 +54,6 @@ app.post("/chat", async (req, res) => {
     
     if (saveMemory && !isCommand && !isTranslation) {
         const history = chatHistory[playerId].slice(-10);
-        console.log("ADDING HISTORY:", history.length, "msgs");
         for (const msg of history) {
             messages.push(msg);
         }
@@ -81,14 +78,13 @@ app.post("/chat", async (req, res) => {
                 if (chatHistory[playerId].length > 20) {
                     chatHistory[playerId] = chatHistory[playerId].slice(-20);
                 }
-                console.log("SAVED. TOTAL:", chatHistory[playerId].length);
             }
             
             return res.json({ reply: reply });
         }
 
         if (response.status === 429) {
-            return res.json({ reply: "Ключ " + keyNumber + " исчерпан." });
+            return res.json({ reply: "Ключ " + keyNumber + " исчерпал лимит." });
         }
 
         return res.json({ reply: "Ошибка: " + response.status });

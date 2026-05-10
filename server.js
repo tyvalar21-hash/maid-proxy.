@@ -304,12 +304,15 @@ app.post("/chat", async (req, res) => {
     let messages = [];
     messages.push({ role: "system", content: systemPrompt });
     
-    if (!isCommand && !isTranslation && !translateForGuest && !translateFromGuest && saveMemory) {
-        
+    // Факты добавляем ВСЕГДА (если есть)
+    if (saveMemory) {
         const factsStr = buildFactsString(playerId, playerRole);
         if (factsStr) {
             messages.push({ role: "system", content: factsStr });
         }
+    }
+    
+    if (!isCommand && !isTranslation && !translateForGuest && !translateFromGuest && saveMemory) {
         
         if (isSearchQuery && chatBlocks[playerId].length > 0) {
             const foundBlocks = searchBlocks(playerId, message);

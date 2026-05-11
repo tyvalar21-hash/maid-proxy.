@@ -14,6 +14,7 @@ const KEYS = [
 let currentKeyIndex = 0;
 const chatHistory = {};
 const chatSummary = {};
+const playerFacts = {};
 
 function compressMessage(msg) {
     if (!msg || !msg.content) return { role: "user", content: "" };
@@ -23,6 +24,114 @@ function compressMessage(msg) {
         content = content.substring(0, 30);
     }
     return { role: msg.role, content: content };
+}
+
+function extractFacts(message, playerId) {
+    if (!playerFacts[playerId]) {
+        playerFacts[playerId] = {};
+    }
+    
+    const facts = playerFacts[playerId];
+    const msg = message.toLowerCase();
+    
+    // Имя
+    const nameMatch = message.match(/(?:меня зовут|я|мое имя|называй меня|зови меня)\s+([A-ZА-ЯЁ][a-zа-яё]+)/i);
+    if (nameMatch) {
+        const newName = nameMatch[1];
+        if (facts.name && facts.name !== newName) {
+            return { type: "conflict", field: "имя", oldValue: facts.name, newValue: newName };
+        }
+        facts.name = newName;
+    }
+    
+    // Возраст
+    const ageMatch = msg.match(/(?:мне|мой возраст)\s+(\d+)\s*(?:год|года|лет|годик)/i);
+    if (ageMatch) {
+        const newAge = ageMatch[1];
+        if (facts.age && facts.age !== newAge) {
+            return { type: "conflict", field: "возраст", oldValue: facts.age + " лет", newValue: newAge + " лет" };
+        }
+        facts.age = newAge;
+    }
+    
+    // Откуда
+    const fromMatch = message.match(/(?:я из|я с|я живу в|родом из|я вырос в)\s+(.+?)(?:\.|\,|\s*$)/i);
+    if (fromMatch) {
+        const newFrom = fromMatch[1].trim();
+        if (facts.from && facts.from !== newFrom) {
+            return { type: "conflict", field: "откуда", oldValue: facts.from, newValue: newFrom };
+        }
+        facts.from = newFrom;
+    }
+    
+    // Язык
+    const langMatch = msg.match(/(?:я говорю на|мой язык|мой родной язык|я общаюсь на)\s+(.+?)(?:\.|\,|\s*$)/i);
+    if (langMatch) {
+        const newLang = langMatch[1].trim();
+        if (facts.language && facts.language !== newLang) {
+            return { type: "conflict", field: "язык", oldValue: facts.language, newValue: newLang };
+        }
+        facts.language = newLang;
+    }
+    
+    // Любимый цвет
+    const colorMatch = msg.match(/(?:мой любимый цвет|люблю цвет|мой цвет)\s+(.+?)(?:\.|\,|\s*$)/i);
+    if (colorMatch) {
+        facts.color = colorMatch[1].trim();
+    }
+    
+    // Любимая еда
+    const foodMatch = msg.match(/(?:моя любимая еда|люблю есть|я люблю поесть|моё любимое блюдо)\s+(.+?)(?:\.|\,|\s*$)/i);
+    if (foodMatch) {
+        facts.food = foodMatch[1].trim();
+    }
+    
+    // День рождения
+    const bdayMatch = msg.match(/(?:мой день рождения|я родился|день рождения)\s+(.+?)(?:\.|\,|\s*$)/i);
+    if (bdayMatch) {
+        facts.birthday = bdayMatch[1].trim();
+    }
+    
+    // Домашние животные
+    const petMatch = msg.match(/(?:у меня есть|мо(?:й|ё) домашни(?:й|е) (?:питомец|животное)|я держу)\s+(.+?)(?:\.|\,|\s*$)/i);
+    if (petMatch) {
+        facts.pet = petMatch[1].trim();
+    }
+    
+    // Хобби
+    const hobbyMatch = msg.match(/(?:моё хобби|я увлекаюсь|я люблю заниматься|моё любимое занятие)\s+(.+?)(?:\.|\,|\s*$)/i);
+    if (hobbyMatch) {
+        facts.hobby = hobbyMatch[1].trim();
+    }
+    
+    // Псевдоним
+    const nicknameMatch = message.match(/(?:зови меня|называй меня|обращайся ко мне)\s+(.+?)(?:\.|\,|\s*$)/i);
+    if (nicknameMatch) {
+        facts.nickname = nicknameMatch[1].trim();
+    }
+    
+    return null;
+}
+
+function buildFactsString(playerId) {
+    if (!playerFacts[playerId]) return "";
+    
+    const f = playerFacts[playerId];
+    const parts = [];
+    
+    if (f.name) parts.push("Имя: " + f.name);
+    if (f.nickname) parts.push("Обращение: " + f.nickname);
+    if (f.age) parts.push("Возраст: " + f.age + " лет");
+    if (f.from) parts.push("Откуда: " + f.from);
+    if (f.language) parts.push("Язык: " + f.language);
+    if (f.color) parts.push("Любимый цвет: " + f.color);
+    if (f.food) parts.push("Любимая еда: " + f.food);
+    if (f.birthday) parts.push("День рождения: " + f.birthday);
+    if (f.pet) parts.push("Питомец: " + f.pet);
+    if (f.hobby) parts.push("Хобби: " + f.hobby);
+    
+    if (parts.length === 0) return "";
+    return "[ФАКТЫ ОБ ИГРОКЕ]\n" + parts.join("\n") + "\n\n";
 }
 
 async function summarizeHistory(messages, key) {
@@ -50,6 +159,34 @@ async function summarizeHistory(messages, key) {
     }
 }
 
+app.post("/save-summary", async (req, res) => {
+    const playerId = req.body.playerId || "unknown";
+    const playerRole = req.body.playerRole || "guest";
+    
+    if (playerRole !== "admin" && playerRole !== "vip") {
+        return res.json({ status: "skipped" });
+    }
+    
+    if (!chatHistory[playerId] || chatHistory[playerId].length === 0) {
+        return res.json({ status: "empty" });
+    }
+    
+    const key = KEYS[currentKeyIndex];
+    const summary = await summarizeHistory(chatHistory[playerId], key);
+    
+    if (summary) {
+        if (chatSummary[playerId]) {
+            chatSummary[playerId] += " " + summary;
+        } else {
+            chatSummary[playerId] = summary;
+        }
+        chatHistory[playerId] = [];
+        return res.json({ status: "saved", summary: summary });
+    }
+    
+    return res.json({ status: "error" });
+});
+
 app.post("/chat", async (req, res) => {
     let message = req.body.message || "Hello";
     const userRole = req.body.role || "";
@@ -66,12 +203,27 @@ app.post("/chat", async (req, res) => {
     if (saveMemory && !chatSummary[playerId]) {
         chatSummary[playerId] = "";
     }
+    if (saveMemory && !playerFacts[playerId]) {
+        playerFacts[playerId] = {};
+    }
     
     const match = message.match(/!\s*!/);
     const isCommand = match !== null;
     
     const translateForGuest = message.match(/переведи\s+(мо[ёе]\s+)?сообщение\s+(для\s+)?(гостя|игрока|него|неё|ему|ей)/i);
     const translateFromGuest = message.match(/переведи\s+(слова\s+)?(гостя|игрока|его|её|что\s+(сказал|говорит|написал)\s+(гость|игрок|он|она))/i);
+    
+    // Извлечение фактов
+    let factConflict = null;
+    if (saveMemory && !isCommand && !isTranslation) {
+        factConflict = extractFacts(message, playerId);
+    }
+    
+    // Если есть конфликт фактов — отвечаем сразу
+    if (factConflict && factConflict.type === "conflict") {
+        const reply = "Подождите, но вы же говорили, что вас зовут " + factConflict.oldValue + ". Почему " + factConflict.newValue + "?";
+        return res.json({ reply: reply });
+    }
     
     let systemPrompt;
     let model;
@@ -106,6 +258,14 @@ app.post("/chat", async (req, res) => {
     
     let messages = [];
     messages.push({ role: "system", content: systemPrompt });
+    
+    // Добавляем факты об игроке
+    if (saveMemory && !isCommand && !isTranslation) {
+        const factsStr = buildFactsString(playerId);
+        if (factsStr) {
+            messages.push({ role: "system", content: factsStr });
+        }
+    }
     
     if (saveMemory && !isCommand && !isTranslation) {
         if (chatSummary[playerId]) {

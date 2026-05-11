@@ -6,9 +6,22 @@ function extractFacts(message, playerId) {
     const facts = playerFacts[playerId];
     const msg = message.toLowerCase();
 
-    // Если есть ожидающий конфликт, просто возвращаем null — Groq сам разберётся
+    // Если игрок явно подтверждает новое значение — обновляем факт
     if (pendingConflicts[playerId]) {
-        return null;
+        const pending = pendingConflicts[playerId];
+        // Игрок говорит "я [новое имя]", "на самом деле я [новое имя]", "я врал, я [новое имя]"
+        const confirmPattern = new RegExp("(?:я|меня зовут|на самом деле|я врал|я обманул)\\s+" + pending.newValue.toLowerCase(), "i");
+        if (confirmPattern.test(msg)) {
+            confirmFact(playerId, pending.field === "имя" ? "name" : pending.field, pending.newValue);
+            clearPendingConflict(playerId);
+            return null;
+        }
+        // Если игрок говорит "да, я [старое имя]" — оставляем старое
+        const keepPattern = new RegExp("(?:да|верно|правильно)\\s+" + pending.oldValue.toLowerCase(), "i");
+        if (keepPattern.test(msg)) {
+            clearPendingConflict(playerId);
+            return null;
+        }
     }
 
     // Имя

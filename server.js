@@ -80,28 +80,44 @@ app.post("/chat", async (req, res) => {
     let messages = [{ role: "system", content: systemPrompt }];
     
     if (saveMemory && !isCommand && !isTranslation) {
-        // Эмоция на основе изменений фактов
+        // Определяем эмоцию
         let emotion = "curiosity";
-        if (factResult) {
-            if (factResult.type === "multiple" || factResult.type === "fact_changed") {
-                emotion = "surprise";
-            } else if (factResult.type === "fact_updated") {
-                emotion = "joy";
-            }
-        }
-        
-        // Проверяем сообщение на негатив
         const msgLower = message.toLowerCase();
+        
         if (msgLower.includes("обман") || msgLower.includes("врал") || msgLower.includes("не правда")) {
             emotion = "hurt";
-        } else if (msgLower.includes("спасибо") || msgLower.includes("хорошо") || msgLower.includes("молодец")) {
-            emotion = "joy";
+            personality.decreaseTrust(playerId, 10);
+        } else if (msgLower.includes("спасибо") || msgLower.includes("хорошо") || msgLower.includes("молодец") || msgLower.includes("люблю")) {
+            emotion = "gratitude";
+            personality.increaseTrust(playerId, 5);
         } else if (msgLower.includes("груб") || msgLower.includes("дурак") || msgLower.includes("плохая")) {
             emotion = "anger";
+            personality.decreaseTrust(playerId, 5);
+        } else if (msgLower.includes("привет") || msgLower.includes("здравствуй") || msgLower.includes("как дела")) {
+            emotion = "joy";
+            personality.increaseTrust(playerId, 2);
+        } else if (msgLower.includes("друг") || msgLower.includes("подруга") || msgLower.includes("друзья")) {
+            emotion = "tenderness";
+            personality.increaseTrust(playerId, 8);
+        } else if (msgLower.includes("скуч") || msgLower.includes("нечего делать")) {
+            emotion = "boredom";
+        } else if (factResult && (factResult.type === "multiple" || factResult.type === "fact_changed")) {
+            emotion = "surprise";
+        } else if (factResult && factResult.type === "fact_updated") {
+            emotion = "joy";
         }
+        
+        // Доверие со временем немного растёт
+        personality.increaseTrust(playerId, 1);
         
         const emotionPrompt = personality.getEmotionPrompt(playerId, emotion);
         if (emotionPrompt) messages.push({ role: "system", content: emotionPrompt });
+        
+        // Случайное действие
+        const randomAction = personality.getRandomAction(playerId);
+        if (randomAction) {
+            messages.push({ role: "system", content: "[ДЕЙСТВИЕ] " + randomAction + " Включи это в свой ответ естественно." });
+        }
         
         // Обработка изменений фактов
         if (factResult) {

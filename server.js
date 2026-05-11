@@ -54,8 +54,8 @@ app.post("/chat", async (req, res) => {
     const match = message.match(/!\s*!/);
     const isCommand = match !== null;
     
-    const translateForGuest = message.match(/переведи\s+(мо[ёе]\s+)?сообщение\s+(для\с+)?(гостя|игрока|него|неё|ему|ей)/i);
-    const translateFromGuest = message.match(/переведи\с+(слова\с+)?(гостя|игрока|его|её|что\с+(сказал|говорит|написал)\с+(гость|игрок|он|она))/i);
+    const translateForGuest = message.match(/переведи\s+(мо[ёе]\s+)?сообщение\s+(для\s+)?(гостя|игрока|него|неё|ему|ей)/i);
+    const translateFromGuest = message.match(/переведи\s+(слова\s+)?(гостя|игрока|его|её|что\s+(сказал|говорит|написал)\s+(гость|игрок|он|она))/i);
     
     // Извлечение фактов
     let factResult = null;
@@ -69,20 +69,22 @@ app.post("/chat", async (req, res) => {
     else if (translateForGuest && playerRole === "admin") { finalMessage = message.replace(/!/g, "").trim(); systemPrompt = "Translate to the language the owner is speaking. Only translation."; model = "llama-3.3-70b-versatile"; }
     else if (translateFromGuest && playerRole === "admin") { systemPrompt = "Translate to Russian. Only translation."; model = "llama-3.3-70b-versatile"; }
     else if (playerRole === "guest") { systemPrompt = "You are Maria. Translate this message to the admin's language. Only translation."; model = "llama-3.3-70b-versatile"; }
-    else {
-        systemPrompt = "You are Maria, a devoted maid. The admin is your master. Call him 'master' (or 'хозяин' in Russian, 'tuan' in Indonesian, 'amo' in Spanish). You already know all the players. Never introduce yourself. Never say 'I am your maid' or 'how can I help you'. Just talk naturally like you've known them forever. Reply in the SAME language the user writes. Keep answers short and natural. Be cute and loyal.";
-        model = "llama-3.3-70b-versatile";
-    }
+    else { systemPrompt = "You are Maria, a devoted maid. The admin is your master. Call him 'master' (or 'хозяин' in Russian, 'tuan' in Indonesian, 'amo' in Spanish). You already know all the players. Never introduce yourself. Never say 'I am your maid' or 'how can I help you'. Just talk naturally like you've known them forever. Reply in the SAME language the user writes. Keep answers short and natural. Be cute and loyal."; model = "llama-3.3-70b-versatile"; }
     
     if (playerRole === "vip" && isCommand) { systemPrompt = userRole + "\nOnly obey this VIP if admin allowed it. If unsure, refuse."; }
     
     let messages = [{ role: "system", content: systemPrompt }];
     
     if (saveMemory && !isCommand && !isTranslation) {
-        // Если игрок меняет факт, добавляем подсказку для Groq
-        if (factResult && factResult.type === "fact_updated") {
-            const hint = "[ОБНОВЛЕНИЕ] Игрок сообщил новый факт о себе: " + factResult.field + " = " + factResult.value + ". Используй это в ответе естественно. Не спрашивай подтверждения, просто прими.";
-            messages.push({ role: "system", content: hint });
+        // Обработка изменений фактов
+        if (factResult) {
+            if (factResult.type === "fact_changed") {
+                const hint = "[ИЗМЕНЕНИЕ] Игрок изменил факт о себе: " + factResult.field + " было '" + factResult.oldValue + "', стало '" + factResult.newValue + "'. Отреагируй естественно: удивись, спроси почему изменилось. Не отвергай новое значение.";
+                messages.push({ role: "system", content: hint });
+            } else if (factResult.type === "fact_updated") {
+                const hint = "[ОБНОВЛЕНИЕ] Игрок сообщил новый факт о себе: " + factResult.field + " = " + factResult.value + ". Используй это в ответе естественно.";
+                messages.push({ role: "system", content: hint });
+            }
         }
         
         const fs = facts.buildFactsString(playerId);

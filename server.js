@@ -18,8 +18,8 @@ function compressMessage(msg) {
     if (!msg || !msg.content) return { role: "user", content: "" };
     let content = msg.content;
     content = content.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
-    if (content.length > 50) {
-        content = content.substring(0, 50);
+    if (content.length > 30) {
+        content = content.substring(0, 30);
     }
     return { role: msg.role, content: content };
 }
@@ -32,8 +32,9 @@ app.post("/chat", async (req, res) => {
     const playerName = req.body.playerName || "";
     
     const isTranslation = (userRole.indexOf("Translate") === 0 || userRole.indexOf("translate") === 0);
+    const saveMemory = (playerRole === "admin" || playerRole === "vip");
     
-    if (!chatHistory[playerId]) {
+    if (saveMemory && !chatHistory[playerId]) {
         chatHistory[playerId] = [];
     }
     
@@ -77,8 +78,8 @@ app.post("/chat", async (req, res) => {
     let messages = [];
     messages.push({ role: "system", content: systemPrompt });
     
-    if (!isCommand && !isTranslation) {
-        const history = chatHistory[playerId].slice(-20);
+    if (saveMemory && !isCommand && !isTranslation) {
+        const history = chatHistory[playerId].slice(-40);
         for (const msg of history) {
             messages.push(compressMessage(msg));
         }
@@ -104,11 +105,11 @@ app.post("/chat", async (req, res) => {
                 if (data.choices && data.choices[0]) {
                     const reply = data.choices[0].message.content;
                     
-                    if (!isCommand && !isTranslation) {
+                    if (saveMemory && !isCommand && !isTranslation) {
                         chatHistory[playerId].push({ role: "user", content: finalMessage });
                         chatHistory[playerId].push({ role: "assistant", content: reply });
-                        if (chatHistory[playerId].length > 40) {
-                            chatHistory[playerId] = chatHistory[playerId].slice(-40);
+                        if (chatHistory[playerId].length > 80) {
+                            chatHistory[playerId] = chatHistory[playerId].slice(-80);
                         }
                     }
                     

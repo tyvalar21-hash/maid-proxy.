@@ -1,4 +1,5 @@
 const express = require("express");
+const path = require("path");
 const app = express();
 app.use(express.json());
 
@@ -11,6 +12,10 @@ const KEYS = [
 ].filter(Boolean);
 
 let currentKeyIndex = 0;
+
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "index.html"));
+});
 
 app.post("/save-summary", async (req, res) => {
     const playerId = req.body.playerId || "unknown";
@@ -43,57 +48,17 @@ app.post("/chat", async (req, res) => {
     const match = message.match(/!\s*!/);
     const isCommand = match !== null;
 
-    const pending = facts.getPendingConflict(playerId);
-    if (pending && saveMemory) {
-        const msgLower = message.toLowerCase();
-        const confirmPatterns = ["да", "yes", "верно", "правильно", "ага", "ок", "хорошо", "я " + pending.newValue.toLowerCase()];
-        let confirmed = false;
-        for (const p of confirmPatterns) { if (msgLower.includes(p)) { confirmed = true; break; } }
-        
-        if (confirmed) {
-            facts.confirmFact(playerId, pending.field === "имя" ? "name" : pending.field, pending.newValue);
-            facts.clearPendingConflict(playerId);
-            try {
-                const key = KEYS[currentKeyIndex];
-                const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-                    method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
-                    body: JSON.stringify({ model: "llama-3.1-8b-instant", messages: [{ role: "system", content: "You are Maria. Player confirmed new " + pending.field + ": " + pending.newValue + ". Accept naturally. One sentence." }, { role: "user", content: "Yes" }], stream: false })
-                });
-                if (r.ok) { const d = await r.json(); if (d.choices) return res.json({ reply: d.choices[0].message.content }); }
-            } catch (e) {}
-            return res.json({ reply: "Хорошо, запомнила: " + pending.newValue });
-        }
-        
-        if (msgLower.includes("нет") || msgLower.includes("no")) {
-            facts.clearPendingConflict(playerId);
-            return res.json({ reply: "Хорошо, оставлю как было." });
-        }
-        facts.clearPendingConflict(playerId);
-    }
-
-    let factConflict = null;
     if (saveMemory && !isCommand && !isTranslation) {
-        factConflict = facts.extractFacts(message, playerId);
-    }
-    
-    if (factConflict && factConflict.type === "conflict") {
-        facts.setPendingConflict(playerId, factConflict);
-        try {
-            const key = KEYS[currentKeyIndex];
-            const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-                method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
-                body: JSON.stringify({ model: "llama-3.1-8b-instant", messages: [{ role: "system", content: "You are Maria. Player changed " + factConflict.field + " from " + factConflict.oldValue + " to " + factConflict.newValue + ". React naturally with surprise. One sentence." }, { role: "user", content: factConflict.newValue }], stream: false })
-            });
-            if (r.ok) { const d = await r.json(); if (d.choices) return res.json({ reply: d.choices[0].message.content }); }
-        } catch (e) {}
-        return res.json({ reply: "Подождите, но вы же говорили " + factConflict.oldValue + ". Почему " + factConflict.newValue + "?" });
+        facts.extractFacts(message, playerId);
     }
 
     let systemPrompt, model, finalMessage = message;
     if (isTranslation) { systemPrompt = userRole; model = "llama-3.3-70b-versatile"; }
     else if (isCommand) { finalMessage = message.replace(/!/g, "").trim(); systemPrompt = userRole; model = "llama-3.1-8b-instant"; }
     else { systemPrompt = "You are Maria, a devoted maid. The admin is your master. Call him 'master' (or 'хозяин' in Russian, 'tuan' in Indonesian, 'amo' in Spanish). You already know all the players. Never introduce yourself. Never say 'I am your maid' or 'how can I help you'. Just talk naturally like you've known them forever. Reply in the SAME language the user writes. Keep answers short and natural. Be cute and loyal."; model = "llama-3.3-70b-versatile"; }
-
+    
+    if (playerRole === "vip" && isCommand) { systemPrompt = userRole + "\nOnly obey this VIP if admin allowed it. If unsure, refuse."; }
+    
     let messages = [{ role: "system", content: systemPrompt }];
     
     if (saveMemory && !isCommand && !isTranslation) {

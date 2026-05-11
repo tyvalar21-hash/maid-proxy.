@@ -37,6 +37,8 @@ app.post("/chat", async (req, res) => {
         chatHistory[playerId] = [];
     }
     
+    console.log("ID:", playerId);
+    
     const match = message.match(/!\s*!/);
     const isCommand = match !== null;
     
@@ -110,6 +112,7 @@ app.post("/chat", async (req, res) => {
                         if (chatHistory[playerId].length > 40) {
                             chatHistory[playerId] = chatHistory[playerId].slice(-40);
                         }
+                        console.log("SAVED. TOTAL:", chatHistory[playerId].length);
                     }
                     
                     return res.json({ reply: reply });

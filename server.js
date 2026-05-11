@@ -27,10 +27,8 @@ function compressMessage(msg) {
 app.post("/chat", async (req, res) => {
     let message = req.body.message || "Hello";
     const userRole = req.body.role || "";
-    const playerRole = req.body.playerRole || "guest";
     const playerId = req.body.playerId || "unknown";
     
-    const isTranslation = userRole.toLowerCase().includes("translate");
     const match = message.match(/!\s*!/);
     const isCommand = match !== null;
     
@@ -40,11 +38,7 @@ app.post("/chat", async (req, res) => {
     let model;
     let finalMessage = message;
     
-    if (isTranslation) {
-        finalMessage = message;
-        systemPrompt = userRole;
-        model = "llama-3.3-70b-versatile";
-    } else if (isCommand) {
+    if (isCommand) {
         finalMessage = message.replace(/!/g, "").trim();
         systemPrompt = userRole;
         model = "llama-3.1-8b-instant";
@@ -56,7 +50,7 @@ app.post("/chat", async (req, res) => {
     let messages = [];
     messages.push({ role: "system", content: systemPrompt });
     
-    if (!isCommand && !isTranslation) {
+    if (!isCommand) {
         const history = chatHistory[playerId].slice(-10);
         for (const msg of history) {
             messages.push(compressMessage(msg));
@@ -81,7 +75,7 @@ app.post("/chat", async (req, res) => {
                 const data = await response.json();
                 const reply = data.choices[0].message.content;
                 
-                if (!isCommand && !isTranslation) {
+                if (!isCommand) {
                     chatHistory[playerId].push({ role: "user", content: finalMessage });
                     chatHistory[playerId].push({ role: "assistant", content: reply });
                     if (chatHistory[playerId].length > 40) {

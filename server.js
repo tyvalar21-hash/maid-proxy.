@@ -55,11 +55,12 @@ app.post("/chat", async (req, res) => {
     const isCommand = match !== null;
     
     const translateForGuest = message.match(/переведи\s+(мо[ёе]\s+)?сообщение\s+(для\s+)?(гостя|игрока|него|неё|ему|ей)/i);
-    const translateFromGuest = message.match(/переведи\s+(слова\s+)?(гостя|игрока|его|её|что\s+(сказал|говорит|написал)\s+(гость|игрок|он|она))/i);
+    const translateFromGuest = message.match(/переведи\s+(слова\s+)?(гостя|игрока|его|её|что\с+(сказал|говорит|написал)\с+(гость|игрок|он|она))/i);
     
     // Извлечение фактов
+    let factConflict = null;
     if (saveMemory && !isCommand && !isTranslation) {
-        facts.extractFacts(message, playerId);
+        factConflict = facts.extractFacts(message, playerId);
     }
     
     let systemPrompt, model, finalMessage = message;
@@ -75,6 +76,12 @@ app.post("/chat", async (req, res) => {
     let messages = [{ role: "system", content: systemPrompt }];
     
     if (saveMemory && !isCommand && !isTranslation) {
+        // Если есть конфликт фактов — добавляем информацию в промпт
+        if (factConflict && factConflict.type === "conflict") {
+            const conflictMsg = "[КОНФЛИКТ] Игрок ранее говорил, что его " + factConflict.field + " — " + factConflict.oldValue + ". Теперь он говорит, что его " + factConflict.field + " — " + factConflict.newValue + ". Отреагируй естественно: удивись, спроси почему изменилось.";
+            messages.push({ role: "system", content: conflictMsg });
+        }
+        
         const fs = facts.buildFactsString(playerId);
         if (fs) messages.push({ role: "system", content: fs });
         const summary = memory.getSummary(playerId);
@@ -84,7 +91,6 @@ app.post("/chat", async (req, res) => {
     
     messages.push({ role: "user", content: finalMessage });
     
-    // Защита от бана
     for (let attempt = 0; attempt < 3; attempt++) {
         const key = KEYS[currentKeyIndex];
         

@@ -12,6 +12,7 @@ const KEYS = [
 ].filter(Boolean);
 
 let currentKeyIndex = 0;
+const chatHistory = {};
 
 function compressMessage(msg) {
     if (!msg || !msg.content) return { role: "user", content: "" };
@@ -32,6 +33,10 @@ app.post("/chat", async (req, res) => {
     
     const isTranslation = userRole.toLowerCase().includes("translate");
     const saveMemory = (playerRole === "admin" || playerRole === "vip");
+    
+    if (saveMemory && !chatHistory[playerId]) {
+        chatHistory[playerId] = [];
+    }
     
     const match = message.match(/!\s*!/);
     const isCommand = match !== null;
@@ -73,9 +78,8 @@ app.post("/chat", async (req, res) => {
     let messages = [];
     messages.push({ role: "system", content: systemPrompt });
     
-    const history = req.body.history || [];
-    
-    if (saveMemory && !isCommand && !isTranslation && playerRole !== "guest" && history.length > 0) {
+    if (saveMemory && !isCommand && !isTranslation && playerRole !== "guest") {
+        const history = chatHistory[playerId].slice(-20);
         for (const msg of history) {
             messages.push(compressMessage(msg));
         }
@@ -100,6 +104,15 @@ app.post("/chat", async (req, res) => {
                 const data = await response.json();
                 if (data.choices && data.choices[0]) {
                     const reply = data.choices[0].message.content;
+                    
+                    if (saveMemory && !isCommand && !isTranslation && playerRole !== "guest") {
+                        chatHistory[playerId].push({ role: "user", content: finalMessage });
+                        chatHistory[playerId].push({ role: "assistant", content: reply });
+                        if (chatHistory[playerId].length > 40) {
+                            chatHistory[playerId] = chatHistory[playerId].slice(-40);
+                        }
+                    }
+                    
                     return res.json({ reply: reply });
                 }
                 return res.json({ reply: "Ошибка Groq: пустой ответ" });

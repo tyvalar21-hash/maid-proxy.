@@ -6,70 +6,92 @@ function extractFacts(message, playerId) {
     const facts = playerFacts[playerId];
     const msg = message.toLowerCase();
 
+    // Если есть ожидающий конфликт, просто возвращаем null — Groq сам разберётся
+    if (pendingConflicts[playerId]) {
+        return null;
+    }
+
+    // Имя
     const nameMatch = message.match(/(?:меня зовут|называй меня|зови меня|мо[её] имя)\s+([A-ZА-ЯЁ][a-zа-яё]+)/i);
     if (nameMatch) {
         const newName = nameMatch[1];
         if (facts.name && facts.name !== newName) {
+            setPendingConflict(playerId, { type: "conflict", field: "имя", oldValue: facts.name, newValue: newName });
             return { type: "conflict", field: "имя", oldValue: facts.name, newValue: newName };
         }
         facts.name = newName;
         return null;
     }
 
+    // Возраст
     const ageMatch = msg.match(/(?:мне|мой возраст)\s+(\d+)\s*(?:год|года|лет|годик)/i);
     if (ageMatch) {
         const newAge = ageMatch[1];
         if (facts.age && facts.age !== newAge) {
+            setPendingConflict(playerId, { type: "conflict", field: "возраст", oldValue: facts.age + " лет", newValue: newAge + " лет" });
             return { type: "conflict", field: "возраст", oldValue: facts.age + " лет", newValue: newAge + " лет" };
         }
         facts.age = newAge;
         return null;
     }
 
+    // Откуда
     const fromMatch = message.match(/(?:я из|я с|я живу в|родом из|я вырос в)\s+(.+?)(?:\.|\,|\s*$)/i);
     if (fromMatch) {
         const newFrom = fromMatch[1].trim();
         if (facts.from && facts.from !== newFrom) {
+            setPendingConflict(playerId, { type: "conflict", field: "откуда", oldValue: facts.from, newValue: newFrom });
             return { type: "conflict", field: "откуда", oldValue: facts.from, newValue: newFrom };
         }
         facts.from = newFrom;
         return null;
     }
 
+    // Язык
     const langMatch = msg.match(/(?:я говорю на|мой язык|мой родной язык|я общаюсь на)\s+(.+?)(?:\.|\,|\s*$)/i);
     if (langMatch) {
         const newLang = langMatch[1].trim();
         if (facts.language && facts.language !== newLang) {
+            setPendingConflict(playerId, { type: "conflict", field: "язык", oldValue: facts.language, newValue: newLang });
             return { type: "conflict", field: "язык", oldValue: facts.language, newValue: newLang };
         }
         facts.language = newLang;
         return null;
     }
 
+    // Любимый цвет
     const colorMatch = msg.match(/(?:мой любимый цвет|люблю цвет|мой цвет)\s+(.+?)(?:\.|\,|\s*$)/i);
     if (colorMatch) { facts.color = colorMatch[1].trim(); return null; }
 
+    // Любимая музыка
     const musicMatch = msg.match(/(?:моя любимая музыка|я люблю слушать|я слушаю)\s+(.+?)(?:\.|\,|\s*$)/i);
     if (musicMatch) { facts.music = musicMatch[1].trim(); return null; }
 
+    // Псевдоним
     const nicknameMatch = message.match(/(?:зови меня|называй меня|обращайся ко мне)\s+(.+?)(?:\.|\,|\s*$)/i);
     if (nicknameMatch) { facts.nickname = nicknameMatch[1].trim(); return null; }
 
+    // Отношения
     const friendMatch = msg.match(/(?:ты мой друг|ты моя подруга|мы друзья)/i);
     if (friendMatch) { facts.relationship = friendMatch[0].trim(); return null; }
 
+    // Парень/девушка
     const partnerMatch = msg.match(/(?:у меня есть (?:парень|девушка)|я встречаюсь|я свободен|я свободна)/i);
     if (partnerMatch) { facts.partner = partnerMatch[0].trim(); return null; }
 
+    // Друзья
     const friendsMatch = msg.match(/(?:у меня (?:много|мало) друзей|я (?:общительный|одинокий))/i);
     if (friendsMatch) { facts.friends = friendsMatch[0].trim(); return null; }
 
+    // Roblox
     const robloxMatch = msg.match(/(?:я играю в роблокс|я не играю в роблокс|я часто играю)/i);
     if (robloxMatch) { facts.playsRoblox = robloxMatch[0].trim(); return null; }
 
+    // Любимая игра
     const gameMatch = msg.match(/(?:моя любимая игра|я люблю играть в)\s+(.+?)(?:\.|\,|\s*$)/i);
     if (gameMatch) { facts.favoriteGame = gameMatch[1].trim(); return null; }
 
+    // События
     const eventMatch = msg.match(/(?:я купил|я переехал|я наш[её]л работу|у меня день рождения)\s+(.+?)(?:\.|\,|\s*$)/i);
     if (eventMatch) {
         if (!facts.events) facts.events = [];

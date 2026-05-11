@@ -13,6 +13,7 @@ const KEYS = [
 
 let currentKeyIndex = 0;
 const chatHistory = {};
+const chatSummary = {};
 
 function compressMessage(msg) {
     if (!msg || !msg.content) return { role: "user", content: "" };
@@ -22,6 +23,31 @@ function compressMessage(msg) {
         content = content.substring(0, 30);
     }
     return { role: msg.role, content: content };
+}
+
+async function summarizeHistory(messages, key) {
+    const textToSummarize = messages.map(m => m.content).join(" ");
+    try {
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+            body: JSON.stringify({
+                model: "llama-3.1-8b-instant",
+                messages: [
+                    { role: "system", content: "Сожми этот диалог в одно предложение. Только суть." },
+                    { role: "user", content: textToSummarize }
+                ],
+                stream: false
+            })
+        });
+        if (response.ok) {
+            const data = await response.json();
+            return data.choices[0].message.content;
+        }
+        return null;
+    } catch (e) {
+        return null;
+    }
 }
 
 app.post("/chat", async (req, res) => {
@@ -36,6 +62,9 @@ app.post("/chat", async (req, res) => {
     
     if (saveMemory && !chatHistory[playerId]) {
         chatHistory[playerId] = [];
+    }
+    if (saveMemory && !chatSummary[playerId]) {
+        chatSummary[playerId] = "";
     }
     
     const match = message.match(/!\s*!/);
@@ -79,6 +108,9 @@ app.post("/chat", async (req, res) => {
     messages.push({ role: "system", content: systemPrompt });
     
     if (saveMemory && !isCommand && !isTranslation) {
+        if (chatSummary[playerId]) {
+            messages.push({ role: "system", content: "[ПАМЯТЬ] " + chatSummary[playerId] });
+        }
         const history = chatHistory[playerId].slice(-40);
         for (const msg of history) {
             messages.push(compressMessage(msg));
@@ -108,6 +140,20 @@ app.post("/chat", async (req, res) => {
                     if (saveMemory && !isCommand && !isTranslation) {
                         chatHistory[playerId].push({ role: "user", content: finalMessage });
                         chatHistory[playerId].push({ role: "assistant", content: reply });
+                        
+                        if (chatHistory[playerId].length >= 100) {
+                            const oldMessages = chatHistory[playerId].splice(0, 50);
+                            summarizeHistory(oldMessages, key).then(summary => {
+                                if (summary) {
+                                    if (chatSummary[playerId]) {
+                                        chatSummary[playerId] += " " + summary;
+                                    } else {
+                                        chatSummary[playerId] = summary;
+                                    }
+                                }
+                            });
+                        }
+                        
                         if (chatHistory[playerId].length > 80) {
                             chatHistory[playerId] = chatHistory[playerId].slice(-80);
                         }

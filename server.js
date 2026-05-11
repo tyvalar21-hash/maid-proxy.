@@ -2,8 +2,8 @@ const express = require("express");
 const app = express();
 app.use(express.json());
 
-const memory = require("./modules/memory");
-const facts = require("./modules/facts");
+const memory = require("./memory");
+const facts = require("./facts");
 
 const KEYS = [
     process.env.GROQ_API_KEY_1, process.env.GROQ_API_KEY_2, process.env.GROQ_API_KEY_3,
@@ -43,7 +43,6 @@ app.post("/chat", async (req, res) => {
     const match = message.match(/!\s*!/);
     const isCommand = match !== null;
 
-    // Обработка конфликта фактов
     const pending = facts.getPendingConflict(playerId);
     if (pending && saveMemory) {
         const msgLower = message.toLowerCase();
@@ -72,7 +71,6 @@ app.post("/chat", async (req, res) => {
         facts.clearPendingConflict(playerId);
     }
 
-    // Извлечение фактов
     let factConflict = null;
     if (saveMemory && !isCommand && !isTranslation) {
         factConflict = facts.extractFacts(message, playerId);
@@ -91,7 +89,6 @@ app.post("/chat", async (req, res) => {
         return res.json({ reply: "Подождите, но вы же говорили " + factConflict.oldValue + ". Почему " + factConflict.newValue + "?" });
     }
 
-    // Системный промпт
     let systemPrompt, model, finalMessage = message;
     if (isTranslation) { systemPrompt = userRole; model = "llama-3.3-70b-versatile"; }
     else if (isCommand) { finalMessage = message.replace(/!/g, "").trim(); systemPrompt = userRole; model = "llama-3.1-8b-instant"; }
@@ -109,7 +106,6 @@ app.post("/chat", async (req, res) => {
     
     messages.push({ role: "user", content: finalMessage });
 
-    // Запрос к Groq
     let lastError = "";
     for (let attempt = 0; attempt < KEYS.length; attempt++) {
         const key = KEYS[currentKeyIndex];

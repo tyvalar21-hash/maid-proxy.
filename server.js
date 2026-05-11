@@ -78,7 +78,18 @@ app.post("/chat", async (req, res) => {
     if (saveMemory && !isCommand && !isTranslation) {
         // Обработка изменений фактов
         if (factResult) {
-            if (factResult.type === "fact_changed") {
+            if (factResult.type === "multiple") {
+                let hint = "[МНОЖЕСТВЕННОЕ ИЗМЕНЕНИЕ] Игрок изменил несколько фактов о себе:\n";
+                for (const change of factResult.changes) {
+                    if (change.type === "fact_changed") {
+                        hint += "- " + change.field + ": было '" + change.oldValue + "', стало '" + change.newValue + "'\n";
+                    } else {
+                        hint += "- " + change.field + ": " + change.value + " (новый факт)\n";
+                    }
+                }
+                hint += "Отреагируй естественно: удивись изменениям, спроси почему так много изменилось. Не отвергай новые значения.";
+                messages.push({ role: "system", content: hint });
+            } else if (factResult.type === "fact_changed") {
                 const hint = "[ИЗМЕНЕНИЕ] Игрок изменил факт о себе: " + factResult.field + " было '" + factResult.oldValue + "', стало '" + factResult.newValue + "'. Отреагируй естественно: удивись, спроси почему изменилось. Не отвергай новое значение.";
                 messages.push({ role: "system", content: hint });
             } else if (factResult.type === "fact_updated") {

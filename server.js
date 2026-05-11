@@ -14,6 +14,16 @@ const KEYS = [
 let currentKeyIndex = 0;
 const chatHistory = {};
 
+function compressMessage(msg) {
+    if (!msg || !msg.content) return { role: "user", content: "" };
+    let content = msg.content;
+    content = content.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (content.length > 50) {
+        content = content.substring(0, 50);
+    }
+    return { role: msg.role, content: content };
+}
+
 app.post("/chat", async (req, res) => {
     let message = req.body.message || "Hello";
     const playerId = req.body.playerId || "unknown";
@@ -25,7 +35,7 @@ app.post("/chat", async (req, res) => {
     ];
     
     const history = chatHistory[playerId].slice(-10);
-    for (const msg of history) messages.push(msg);
+    for (const msg of history) messages.push(compressMessage(msg));
     
     messages.push({ role: "user", content: message });
     

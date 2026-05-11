@@ -32,9 +32,8 @@ app.post("/chat", async (req, res) => {
     const playerName = req.body.playerName || "";
     
     const isTranslation = userRole.toLowerCase().includes("translate");
-    const saveMemory = true;
     
-    if (saveMemory && !chatHistory[playerId]) {
+    if (!chatHistory[playerId]) {
         chatHistory[playerId] = [];
     }
     
@@ -78,7 +77,7 @@ app.post("/chat", async (req, res) => {
     let messages = [];
     messages.push({ role: "system", content: systemPrompt });
     
-    if (saveMemory && !isCommand && !isTranslation && playerRole !== "guest") {
+    if (!isCommand && !isTranslation) {
         const history = chatHistory[playerId].slice(-20);
         for (const msg of history) {
             messages.push(compressMessage(msg));
@@ -105,7 +104,7 @@ app.post("/chat", async (req, res) => {
                 if (data.choices && data.choices[0]) {
                     const reply = data.choices[0].message.content;
                     
-                    if (saveMemory && !isCommand && !isTranslation && playerRole !== "guest") {
+                    if (!isCommand && !isTranslation) {
                         chatHistory[playerId].push({ role: "user", content: finalMessage });
                         chatHistory[playerId].push({ role: "assistant", content: reply });
                         if (chatHistory[playerId].length > 40) {

@@ -30,8 +30,10 @@ app.post("/chat", async (req, res) => {
     
     if (!chatHistory[playerId]) chatHistory[playerId] = [];
     
+    let systemPrompt = "You are Maria, a devoted maid. The admin is your master. Call him 'master' (or 'хозяин' in Russian, 'tuan' in Indonesian, 'amo' in Spanish). You already know all the players. Never introduce yourself. Never say 'I am your maid' or 'how can I help you'. Just talk naturally like you've known them forever. Reply in the SAME language the user writes. Keep answers short and natural. Be cute and loyal.";
+    
     let messages = [
-        { role: "system", content: "You are Maria, a maid. Reply same language. Short." }
+        { role: "system", content: systemPrompt }
     ];
     
     const history = chatHistory[playerId].slice(-10);

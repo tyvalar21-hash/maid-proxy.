@@ -1,108 +1,93 @@
 const playerFacts = {};
-const pendingConflicts = {};
 
 function extractFacts(message, playerId) {
     if (!playerFacts[playerId]) playerFacts[playerId] = {};
     const facts = playerFacts[playerId];
     const msg = message.toLowerCase();
 
-    // Если игрок явно подтверждает новое значение — обновляем факт
-    if (pendingConflicts[playerId]) {
-        const pending = pendingConflicts[playerId];
-        // Игрок говорит "я [новое имя]", "на самом деле я [новое имя]", "я врал, я [новое имя]"
-        const confirmPattern = new RegExp("(?:я|меня зовут|на самом деле|я врал|я обманул)\\s+" + pending.newValue.toLowerCase(), "i");
-        if (confirmPattern.test(msg)) {
-            confirmFact(playerId, pending.field === "имя" ? "name" : pending.field, pending.newValue);
-            clearPendingConflict(playerId);
-            return null;
-        }
-        // Если игрок говорит "да, я [старое имя]" — оставляем старое
-        const keepPattern = new RegExp("(?:да|верно|правильно)\\s+" + pending.oldValue.toLowerCase(), "i");
-        if (keepPattern.test(msg)) {
-            clearPendingConflict(playerId);
-            return null;
-        }
-    }
-
-    // Имя
+    // Имя — только явное представление
     const nameMatch = message.match(/(?:меня зовут|называй меня|зови меня|мо[её] имя)\s+([A-ZА-ЯЁ][a-zа-яё]+)/i);
     if (nameMatch) {
-        const newName = nameMatch[1];
-        if (facts.name && facts.name !== newName) {
-            setPendingConflict(playerId, { type: "conflict", field: "имя", oldValue: facts.name, newValue: newName });
-            return { type: "conflict", field: "имя", oldValue: facts.name, newValue: newName };
-        }
-        facts.name = newName;
-        return null;
+        facts.name = nameMatch[1];
+        return { type: "fact_updated", field: "имя", value: facts.name };
     }
 
     // Возраст
     const ageMatch = msg.match(/(?:мне|мой возраст)\s+(\d+)\s*(?:год|года|лет|годик)/i);
     if (ageMatch) {
-        const newAge = ageMatch[1];
-        if (facts.age && facts.age !== newAge) {
-            setPendingConflict(playerId, { type: "conflict", field: "возраст", oldValue: facts.age + " лет", newValue: newAge + " лет" });
-            return { type: "conflict", field: "возраст", oldValue: facts.age + " лет", newValue: newAge + " лет" };
-        }
-        facts.age = newAge;
-        return null;
+        facts.age = ageMatch[1];
+        return { type: "fact_updated", field: "возраст", value: facts.age + " лет" };
     }
 
     // Откуда
     const fromMatch = message.match(/(?:я из|я с|я живу в|родом из|я вырос в)\s+(.+?)(?:\.|\,|\s*$)/i);
     if (fromMatch) {
-        const newFrom = fromMatch[1].trim();
-        if (facts.from && facts.from !== newFrom) {
-            setPendingConflict(playerId, { type: "conflict", field: "откуда", oldValue: facts.from, newValue: newFrom });
-            return { type: "conflict", field: "откуда", oldValue: facts.from, newValue: newFrom };
-        }
-        facts.from = newFrom;
-        return null;
+        facts.from = fromMatch[1].trim();
+        return { type: "fact_updated", field: "откуда", value: facts.from };
     }
 
     // Язык
     const langMatch = msg.match(/(?:я говорю на|мой язык|мой родной язык|я общаюсь на)\s+(.+?)(?:\.|\,|\s*$)/i);
     if (langMatch) {
-        const newLang = langMatch[1].trim();
-        if (facts.language && facts.language !== newLang) {
-            setPendingConflict(playerId, { type: "conflict", field: "язык", oldValue: facts.language, newValue: newLang });
-            return { type: "conflict", field: "язык", oldValue: facts.language, newValue: newLang };
-        }
-        facts.language = newLang;
-        return null;
+        facts.language = langMatch[1].trim();
+        return { type: "fact_updated", field: "язык", value: facts.language };
     }
 
     // Любимый цвет
     const colorMatch = msg.match(/(?:мой любимый цвет|люблю цвет|мой цвет)\s+(.+?)(?:\.|\,|\s*$)/i);
-    if (colorMatch) { facts.color = colorMatch[1].trim(); return null; }
+    if (colorMatch) {
+        facts.color = colorMatch[1].trim();
+        return { type: "fact_updated", field: "цвет", value: facts.color };
+    }
 
     // Любимая музыка
     const musicMatch = msg.match(/(?:моя любимая музыка|я люблю слушать|я слушаю)\s+(.+?)(?:\.|\,|\s*$)/i);
-    if (musicMatch) { facts.music = musicMatch[1].trim(); return null; }
+    if (musicMatch) {
+        facts.music = musicMatch[1].trim();
+        return { type: "fact_updated", field: "музыка", value: facts.music };
+    }
 
     // Псевдоним
     const nicknameMatch = message.match(/(?:зови меня|называй меня|обращайся ко мне)\s+(.+?)(?:\.|\,|\s*$)/i);
-    if (nicknameMatch) { facts.nickname = nicknameMatch[1].trim(); return null; }
+    if (nicknameMatch) {
+        facts.nickname = nicknameMatch[1].trim();
+        return { type: "fact_updated", field: "псевдоним", value: facts.nickname };
+    }
 
     // Отношения
     const friendMatch = msg.match(/(?:ты мой друг|ты моя подруга|мы друзья)/i);
-    if (friendMatch) { facts.relationship = friendMatch[0].trim(); return null; }
+    if (friendMatch) {
+        facts.relationship = friendMatch[0].trim();
+        return { type: "fact_updated", field: "отношения", value: facts.relationship };
+    }
 
     // Парень/девушка
     const partnerMatch = msg.match(/(?:у меня есть (?:парень|девушка)|я встречаюсь|я свободен|я свободна)/i);
-    if (partnerMatch) { facts.partner = partnerMatch[0].trim(); return null; }
+    if (partnerMatch) {
+        facts.partner = partnerMatch[0].trim();
+        return { type: "fact_updated", field: "статус", value: facts.partner };
+    }
 
     // Друзья
     const friendsMatch = msg.match(/(?:у меня (?:много|мало) друзей|я (?:общительный|одинокий))/i);
-    if (friendsMatch) { facts.friends = friendsMatch[0].trim(); return null; }
+    if (friendsMatch) {
+        facts.friends = friendsMatch[0].trim();
+        return { type: "fact_updated", field: "друзья", value: facts.friends };
+    }
 
     // Roblox
     const robloxMatch = msg.match(/(?:я играю в роблокс|я не играю в роблокс|я часто играю)/i);
-    if (robloxMatch) { facts.playsRoblox = robloxMatch[0].trim(); return null; }
+    if (robloxMatch) {
+        facts.playsRoblox = robloxMatch[0].trim();
+        return { type: "fact_updated", field: "роблокс", value: facts.playsRoblox };
+    }
 
     // Любимая игра
     const gameMatch = msg.match(/(?:моя любимая игра|я люблю играть в)\s+(.+?)(?:\.|\,|\s*$)/i);
-    if (gameMatch) { facts.favoriteGame = gameMatch[1].trim(); return null; }
+    if (gameMatch) {
+        facts.favoriteGame = gameMatch[1].trim();
+        return { type: "fact_updated", field: "игра", value: facts.favoriteGame };
+    }
 
     // События
     const eventMatch = msg.match(/(?:я купил|я переехал|я наш[её]л работу|у меня день рождения)\s+(.+?)(?:\.|\,|\s*$)/i);
@@ -110,7 +95,7 @@ function extractFacts(message, playerId) {
         if (!facts.events) facts.events = [];
         facts.events.push(eventMatch[0].trim());
         if (facts.events.length > 5) facts.events.shift();
-        return null;
+        return { type: "fact_updated", field: "событие", value: eventMatch[0].trim() };
     }
 
     return null;
@@ -137,10 +122,6 @@ function buildFactsString(playerId) {
     return "[ФАКТЫ]\n" + parts.join("\n") + "\n\n";
 }
 
-function setPendingConflict(playerId, conflict) { pendingConflicts[playerId] = conflict; }
-function getPendingConflict(playerId) { return pendingConflicts[playerId]; }
-function clearPendingConflict(playerId) { delete pendingConflicts[playerId]; }
-function confirmFact(playerId, field, value) { if (!playerFacts[playerId]) playerFacts[playerId] = {}; playerFacts[playerId][field] = value; }
 function initFacts(playerId) { if (!playerFacts[playerId]) playerFacts[playerId] = {}; }
 
-module.exports = { extractFacts, buildFactsString, setPendingConflict, getPendingConflict, clearPendingConflict, confirmFact, initFacts };
+module.exports = { extractFacts, buildFactsString, initFacts };

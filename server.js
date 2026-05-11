@@ -12,39 +12,16 @@ const KEYS = [
 ].filter(Boolean);
 
 let currentKeyIndex = 0;
-const chatHistory = {};
 
-app.get("/", (req, res) => {
-    res.send(`
-<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><title>Maria</title>
-<style>
-body{font-family:Arial;max-width:600px;margin:20px auto;padding:10px;background:#1a1a2e;color:#eee}
-#chat{height:400px;overflow-y:auto;padding:10px;margin-bottom:10px;background:#16213e;border-radius:5px}
-input{width:75%;padding:8px;background:#0f3460;color:#eee;border:1px solid #533483;border-radius:3px}
-button{padding:8px 15px;background:#533483;color:#eee;border:none;border-radius:3px;cursor:pointer}
-</style>
-</head>
-<body>
-<h2>Maria</h2>
-<div id="chat"></div>
-<input id="msg" placeholder="Напиши..."><button onclick="send()">Send</button>
-<script>
-let history=[];
-function addMsg(role,text){let d=document.createElement("div");d.innerHTML="<b>"+(role==="user"?"You":"Maria")+":</b> "+text;document.getElementById("chat").appendChild(d)}
-async function send(){
-let input=document.getElementById("msg");let msg=input.value.trim();if(!msg)return;
-addMsg("user",msg);input.value="";
-try{
-let r=await fetch("/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:msg,history:history.slice(-10),role:"test",playerRole:"admin",playerId:"test",playerName:"Test"})});
-let data=await r.json();addMsg("assistant",data.reply);history.push({role:"user",content:msg});history.push({role:"assistant",content:data.reply})
-}catch(e){addMsg("assistant","Error: "+e.message)}
+function compressMessage(msg) {
+    if (!msg || !msg.content) return { role: "user", content: "" };
+    let content = msg.content;
+    content = content.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (content.length > 50) {
+        content = content.substring(0, 50);
+    }
+    return { role: msg.role, content: content };
 }
-</script>
-</body>
-</html>`);
-});
 
 app.post("/chat", async (req, res) => {
     let message = req.body.message || "Hello";
@@ -55,10 +32,6 @@ app.post("/chat", async (req, res) => {
     
     const isTranslation = userRole.toLowerCase().includes("translate");
     const saveMemory = (playerRole === "admin" || playerRole === "vip");
-    
-    if (saveMemory && !chatHistory[playerId]) {
-        chatHistory[playerId] = [];
-    }
     
     const match = message.match(/!\s*!/);
     const isCommand = match !== null;
@@ -85,6 +58,9 @@ app.post("/chat", async (req, res) => {
     } else if (translateFromGuest && playerRole === "admin") {
         systemPrompt = "Translate to Russian. Only translation.";
         model = "llama-3.3-70b-versatile";
+    } else if (playerRole === "guest") {
+        systemPrompt = "You are Maria. Translate this message to the admin's language. Only translation.";
+        model = "llama-3.3-70b-versatile";
     } else {
         systemPrompt = "You are Maria, a devoted maid. The admin is your master. Call him 'master' (or 'хозяин' in Russian, 'tuan' in Indonesian, 'amo' in Spanish). You already know all the players. Never introduce yourself. Never say 'I am your maid' or 'how can I help you'. Just talk naturally like you've known them forever. Reply in the SAME language the user writes. Keep answers short and natural. Be cute and loyal.";
         model = "llama-3.3-70b-versatile";
@@ -97,11 +73,11 @@ app.post("/chat", async (req, res) => {
     let messages = [];
     messages.push({ role: "system", content: systemPrompt });
     
-    const history = req.body.history || (saveMemory ? chatHistory[playerId].slice(-10) : []);
+    const history = req.body.history || [];
     
-    if (saveMemory && !isCommand && !isTranslation && !translateForGuest && !translateFromGuest) {
+    if (saveMemory && !isCommand && !isTranslation && playerRole !== "guest" && history.length > 0) {
         for (const msg of history) {
-            messages.push(msg);
+            messages.push(compressMessage(msg));
         }
     }
     
@@ -124,15 +100,6 @@ app.post("/chat", async (req, res) => {
                 const data = await response.json();
                 if (data.choices && data.choices[0]) {
                     const reply = data.choices[0].message.content;
-                    
-                    if (saveMemory && !isCommand && !isTranslation && !translateForGuest && !translateFromGuest) {
-                        chatHistory[playerId].push({ role: "user", content: finalMessage });
-                        chatHistory[playerId].push({ role: "assistant", content: reply });
-                        if (chatHistory[playerId].length > 48) {
-                            chatHistory[playerId] = chatHistory[playerId].slice(-48);
-                        }
-                    }
-                    
                     return res.json({ reply: reply });
                 }
                 return res.json({ reply: "Ошибка Groq: пустой ответ" });
@@ -140,14 +107,7 @@ app.post("/chat", async (req, res) => {
 
             if (response.status === 429) {
                 const retryAfter = response.headers.get("Retry-After") || "5";
-                const waitSeconds = parseInt(retryAfter) || 5;
-                lastError = "Ключ " + keyNumber + " исчерпал лимит (" + waitSeconds + "с)";
-                currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
-                continue;
-            }
-            
-            if (response.status === 400 || response.status === 401 || response.status === 403) {
-                lastError = "Ключ " + keyNumber + " ошибка " + response.status;
+                lastError = "Ключ " + keyNumber + " исчерпал лимит (" + retryAfter + "с)";
                 currentKeyIndex = (currentKeyIndex + 1) % KEYS.length;
                 continue;
             }

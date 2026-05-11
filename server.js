@@ -32,7 +32,7 @@ app.post("/chat", async (req, res) => {
     const playerName = req.body.playerName || "";
     
     const isTranslation = userRole.toLowerCase().includes("translate");
-    const saveMemory = (playerRole === "admin" || playerRole === "vip");
+    const saveMemory = true;
     
     if (saveMemory && !chatHistory[playerId]) {
         chatHistory[playerId] = [];

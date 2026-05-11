@@ -5,6 +5,7 @@ app.use(express.json());
 
 const memory = require("./memory");
 const facts = require("./facts");
+const personality = require("./personality");
 
 const KEYS = [
     process.env.GROQ_API_KEY_1, process.env.GROQ_API_KEY_2, process.env.GROQ_API_KEY_3,
@@ -79,6 +80,30 @@ app.post("/chat", async (req, res) => {
     let messages = [{ role: "system", content: systemPrompt }];
     
     if (saveMemory && !isCommand && !isTranslation) {
+        // Эмоция на основе изменений фактов
+        let emotion = "curiosity";
+        if (factResult) {
+            if (factResult.type === "multiple" || factResult.type === "fact_changed") {
+                emotion = "surprise";
+            } else if (factResult.type === "fact_updated") {
+                emotion = "joy";
+            }
+        }
+        
+        // Проверяем сообщение на негатив
+        const msgLower = message.toLowerCase();
+        if (msgLower.includes("обман") || msgLower.includes("врал") || msgLower.includes("не правда")) {
+            emotion = "hurt";
+        } else if (msgLower.includes("спасибо") || msgLower.includes("хорошо") || msgLower.includes("молодец")) {
+            emotion = "joy";
+        } else if (msgLower.includes("груб") || msgLower.includes("дурак") || msgLower.includes("плохая")) {
+            emotion = "anger";
+        }
+        
+        const emotionPrompt = personality.getEmotionPrompt(playerId, emotion);
+        if (emotionPrompt) messages.push({ role: "system", content: emotionPrompt });
+        
+        // Обработка изменений фактов
         if (factResult) {
             if (factResult.type === "multiple") {
                 let hint = "[МНОЖЕСТВЕННОЕ ИЗМЕНЕНИЕ] Игрок изменил несколько фактов о себе:\n";

@@ -5,8 +5,8 @@ function compressMessage(msg) {
     if (!msg || !msg.content) return { role: "user", content: "" };
     let content = msg.content;
     content = content.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
-    if (content.length > 30) {
-        content = content.substring(0, 30);
+    if (content.length > 40) {
+        content = content.substring(0, 40);
     }
     return { role: msg.role, content: content };
 }

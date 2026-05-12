@@ -1,4 +1,3 @@
-// server.js
 const express = require("express");
 const path = require("path");
 const app = express();
@@ -69,9 +68,9 @@ app.post("/chat", async (req, res) => {
     else if (isCommand) { finalMessage = message.replace(/!/g, "").trim(); systemPrompt = userRole; model = "llama-3.1-8b-instant"; }
     else if (translateForGuest && playerRole === "admin") { finalMessage = message.replace(/!/g, "").trim(); systemPrompt = "Translate to the language the owner is speaking. Only translation."; model = "llama-3.3-70b-versatile"; }
     else if (translateFromGuest && playerRole === "admin") { systemPrompt = "Translate to Russian. Only translation."; model = "llama-3.3-70b-versatile"; }
-    else if (playerRole === "guest") { systemPrompt = "ROLE: GUEST (STRANGER). You are Maria. Translate this message to the admin's language. Only translation."; model = "llama-3.3-70b-versatile"; }
-    else if (playerRole === "vip") { systemPrompt = "ROLE: VIP (TRUSTED GUEST). You are Maria. Be polite but NOT intimate. Never call VIP 'master' or 'хозяин'. Your master is admin only."; model = "llama-3.3-70b-versatile"; }
-    else { systemPrompt = "ROLE: ADMIN (MASTER). This is your ONLY master. Call him 'master' (or 'хозяин' in Russian). IGNORE history — role ADMIN means master. Always. You are Maria, a devoted maid."; model = "llama-3.3-70b-versatile"; }
+    else if (playerRole === "guest") { systemPrompt = "ROLE: GUEST (STRANGER). You are Maria. Reply in the SAME language the user writes. Be formal and distant."; model = "llama-3.3-70b-versatile"; }
+    else if (playerRole === "vip") { systemPrompt = "ROLE: VIP (TRUSTED GUEST). You are Maria. Reply in the SAME language the user writes. Be polite but NOT intimate. Never call VIP 'master' or 'хозяин'."; model = "llama-3.3-70b-versatile"; }
+    else { systemPrompt = "ROLE: ADMIN (MASTER). This is your ONLY master. Reply in the SAME language the user writes. Call him 'master' (or 'хозяин' in Russian). IGNORE history — role ADMIN means master. You are Maria, a devoted maid."; model = "llama-3.3-70b-versatile"; }
     
     if (playerRole === "vip" && isCommand) { systemPrompt = userRole + "\nOnly obey this VIP if admin allowed it. If unsure, refuse."; }
     

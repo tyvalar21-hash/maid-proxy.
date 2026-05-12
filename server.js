@@ -3,6 +3,9 @@ const path = require("path");
 const app = express();
 app.use(express.json());
 
+const memory = require("./memory");
+const facts = require("./facts");
+
 const KEYS = [
     process.env.GROQ_API_KEY_1, process.env.GROQ_API_KEY_2, process.env.GROQ_API_KEY_3,
     process.env.GROQ_API_KEY_4, process.env.GROQ_API_KEY_5, process.env.GROQ_API_KEY_6
@@ -11,46 +14,9 @@ const KEYS = [
 let currentKeyIndex = 0;
 let consecutiveErrors = 0;
 const MAX_CONSECUTIVE_ERRORS = 3;
-const chatHistory = {};
-const chatSummary = {};
-
-function compressMessage(msg) {
-    if (!msg || !msg.content) return { role: "user", content: "" };
-    let content = msg.content;
-    content = content.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
-    if (content.length > 40) {
-        content = content.substring(0, 40);
-    }
-    return { role: msg.role, content: content };
-}
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function summarizeHistory(messages, key) {
-    const textToSummarize = messages.map(m => m.content).join(" ");
-    try {
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
-            body: JSON.stringify({
-                model: "llama-3.1-8b-instant",
-                messages: [
-                    { role: "system", content: "Сожми этот диалог в одно предложение. Только суть." },
-                    { role: "user", content: textToSummarize }
-                ],
-                stream: false
-            })
-        });
-        if (response.ok) {
-            const data = await response.json();
-            return data.choices[0].message.content;
-        }
-        return null;
-    } catch (e) {
-        return null;
-    }
 }
 
 app.get("/", (req, res) => {
@@ -61,13 +27,11 @@ app.post("/save-summary", async (req, res) => {
     const playerId = req.body.playerId || "unknown";
     const playerRole = req.body.playerRole || "guest";
     if (playerRole !== "admin" && playerRole !== "vip") return res.json({ status: "skipped" });
-    if (!chatHistory[playerId] || chatHistory[playerId].length === 0) return res.json({ status: "empty" });
+    if (!memory.hasHistory(playerId)) return res.json({ status: "empty" });
     const key = KEYS[currentKeyIndex];
-    const summary = await summarizeHistory(chatHistory[playerId], key);
+    const summary = await memory.summarizeHistory(memory.getHistory(playerId), key);
     if (summary) {
-        if (chatSummary[playerId]) { chatSummary[playerId] += " " + summary; }
-        else { chatSummary[playerId] = summary; }
-        chatHistory[playerId] = [];
+        memory.clearHistory(playerId);
         return res.json({ status: "saved", summary: summary });
     }
     return res.json({ status: "error" });
@@ -83,14 +47,21 @@ app.post("/chat", async (req, res) => {
     const isTranslation = (userRole.indexOf("Translate") === 0 || userRole.indexOf("translate") === 0);
     const saveMemory = (playerRole === "admin" || playerRole === "vip");
     
-    if (saveMemory && !chatHistory[playerId]) chatHistory[playerId] = [];
-    if (saveMemory && !chatSummary[playerId]) chatSummary[playerId] = "";
+    if (saveMemory) {
+        facts.initFacts(playerId);
+    }
     
     const match = message.match(/!\s*!/);
     const isCommand = match !== null;
     
     const translateForGuest = message.match(/переведи\s+(мо[ёе]\s+)?сообщение\s+(для\с+)?(гостя|игрока|него|неё|ему|ей)/i);
     const translateFromGuest = message.match(/переведи\с+(слова\с+)?(гостя|игрока|его|её|что\с+(сказал|говорит|написал)\с+(гость|игрок|он|она))/i);
+    
+    // Извлечение фактов
+    let factResult = null;
+    if (saveMemory && !isCommand && !isTranslation) {
+        factResult = facts.extractFacts(message, playerId);
+    }
     
     let systemPrompt, model, finalMessage = message;
     if (isTranslation) { systemPrompt = userRole; model = "llama-3.3-70b-versatile"; }
@@ -109,10 +80,33 @@ app.post("/chat", async (req, res) => {
     let messages = [{ role: "system", content: systemPrompt }];
     
     if (saveMemory && !isCommand && !isTranslation) {
-        const summary = chatSummary[playerId];
+        // Обработка изменений фактов
+        if (factResult) {
+            if (factResult.type === "multiple") {
+                let hint = "[МНОЖЕСТВЕННОЕ ИЗМЕНЕНИЕ] Игрок изменил несколько фактов о себе:\n";
+                for (const change of factResult.changes) {
+                    if (change.type === "fact_changed") {
+                        hint += "- " + change.field + ": было '" + change.oldValue + "', стало '" + change.newValue + "'\n";
+                    } else {
+                        hint += "- " + change.field + ": " + change.value + " (новый факт)\n";
+                    }
+                }
+                hint += "Отреагируй естественно: удивись изменениям, спроси почему так много изменилось. Не отвергай новые значения.";
+                messages.push({ role: "system", content: hint });
+            } else if (factResult.type === "fact_changed") {
+                const hint = "[ИЗМЕНЕНИЕ] Игрок изменил факт о себе: " + factResult.field + " было '" + factResult.oldValue + "', стало '" + factResult.newValue + "'. Отреагируй естественно: удивись, спроси почему изменилось. Не отвергай новое значение.";
+                messages.push({ role: "system", content: hint });
+            } else if (factResult.type === "fact_updated") {
+                const hint = "[ОБНОВЛЕНИЕ] Игрок сообщил новый факт о себе: " + factResult.field + " = " + factResult.value + ". Используй это в ответе естественно.";
+                messages.push({ role: "system", content: hint });
+            }
+        }
+        
+        const fs = facts.buildFactsString(playerId);
+        if (fs) messages.push({ role: "system", content: fs });
+        const summary = memory.getSummary(playerId);
         if (summary) messages.push({ role: "system", content: "[ПАМЯТЬ] " + summary });
-        const history = chatHistory[playerId].slice(-40);
-        for (const msg of history) messages.push(compressMessage(msg));
+        for (const msg of memory.getHistory(playerId)) messages.push(memory.compressMessage(msg));
     }
     
     messages.push({ role: "user", content: finalMessage });
@@ -135,20 +129,9 @@ app.post("/chat", async (req, res) => {
                     const reply = data.choices[0].message.content;
                     
                     if (saveMemory && !isCommand && !isTranslation) {
-                        chatHistory[playerId].push({ role: "user", content: finalMessage });
-                        chatHistory[playerId].push({ role: "assistant", content: reply });
-                        
-                        if (chatHistory[playerId].length >= 100) {
-                            const oldMessages = chatHistory[playerId].splice(0, 50);
-                            summarizeHistory(oldMessages, key).then(summary => {
-                                if (summary) {
-                                    if (chatSummary[playerId]) chatSummary[playerId] += " " + summary;
-                                    else chatSummary[playerId] = summary;
-                                }
-                            });
-                        }
-                        
-                        if (chatHistory[playerId].length > 80) chatHistory[playerId] = chatHistory[playerId].slice(-80);
+                        memory.addToHistory(playerId, "user", finalMessage);
+                        memory.addToHistory(playerId, "assistant", reply);
+                        await memory.maybeSummarize(playerId, key);
                     }
                     
                     return res.json({ reply });

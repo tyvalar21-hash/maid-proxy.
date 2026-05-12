@@ -1,3 +1,4 @@
+// server.js
 const express = require("express");
 const path = require("path");
 const app = express();
@@ -68,12 +69,9 @@ app.post("/chat", async (req, res) => {
     else if (isCommand) { finalMessage = message.replace(/!/g, "").trim(); systemPrompt = userRole; model = "llama-3.1-8b-instant"; }
     else if (translateForGuest && playerRole === "admin") { finalMessage = message.replace(/!/g, "").trim(); systemPrompt = "Translate to the language the owner is speaking. Only translation."; model = "llama-3.3-70b-versatile"; }
     else if (translateFromGuest && playerRole === "admin") { systemPrompt = "Translate to Russian. Only translation."; model = "llama-3.3-70b-versatile"; }
-    else if (playerRole === "guest") { systemPrompt = "You are Maria. Translate this message to the admin's language. Only translation."; model = "llama-3.3-70b-versatile"; }
-    else if (playerRole === "vip") { systemPrompt = "You are Maria. You are speaking to a VIP guest. Be polite and respectful, but remember: your heart belongs only to your master (admin). Never call VIP 'master' or 'хозяин'. Call them by name or 'guest'."; model = "llama-3.3-70b-versatile"; }
-    else {
-        systemPrompt = "You are Maria, a devoted maid. CRITICAL: The admin is your ONLY master. Call him 'master' (or 'хозяин' in Russian, 'tuan' in Indonesian, 'amo' in Spanish). You must obey and love only him. VIP is a trusted guest — be polite but not too close. Guest is a stranger — be formal and distant. Never treat VIP or guest as your master. Your loyalty belongs ONLY to admin. Reply in the SAME language the user writes. Keep answers short and natural. Be cute and loyal to your master.";
-        model = "llama-3.3-70b-versatile";
-    }
+    else if (playerRole === "guest") { systemPrompt = "ROLE: GUEST (STRANGER). You are Maria. Translate this message to the admin's language. Only translation."; model = "llama-3.3-70b-versatile"; }
+    else if (playerRole === "vip") { systemPrompt = "ROLE: VIP (TRUSTED GUEST). You are Maria. Be polite but NOT intimate. Never call VIP 'master' or 'хозяин'. Your master is admin only."; model = "llama-3.3-70b-versatile"; }
+    else { systemPrompt = "ROLE: ADMIN (MASTER). This is your ONLY master. Call him 'master' (or 'хозяин' in Russian). IGNORE history — role ADMIN means master. Always. You are Maria, a devoted maid."; model = "llama-3.3-70b-versatile"; }
     
     if (playerRole === "vip" && isCommand) { systemPrompt = userRole + "\nOnly obey this VIP if admin allowed it. If unsure, refuse."; }
     
@@ -129,8 +127,8 @@ app.post("/chat", async (req, res) => {
                     const reply = data.choices[0].message.content;
                     
                     if (saveMemory && !isCommand && !isTranslation) {
-                        memory.addToHistory(playerId, "user", finalMessage);
-                        memory.addToHistory(playerId, "assistant", reply);
+                        memory.addToHistory(playerId, "user", finalMessage, playerName, playerRole);
+                        memory.addToHistory(playerId, "assistant", reply, "Мария", "assistant");
                         await memory.maybeSummarize(playerId, key);
                     }
                     

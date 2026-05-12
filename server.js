@@ -57,7 +57,6 @@ app.post("/chat", async (req, res) => {
     const translateForGuest = message.match(/переведи\s+(мо[ёе]\s+)?сообщение\s+(для\с+)?(гостя|игрока|него|неё|ему|ей)/i);
     const translateFromGuest = message.match(/переведи\с+(слова\с+)?(гостя|игрока|его|её|что\с+(сказал|говорит|написал)\с+(гость|игрок|он|она))/i);
     
-    // Извлечение фактов
     let factResult = null;
     if (saveMemory && !isCommand && !isTranslation) {
         factResult = facts.extractFacts(message, playerId);
@@ -68,34 +67,26 @@ app.post("/chat", async (req, res) => {
     else if (isCommand) { finalMessage = message.replace(/!/g, "").trim(); systemPrompt = userRole; model = "llama-3.1-8b-instant"; }
     else if (translateForGuest && playerRole === "admin") { finalMessage = message.replace(/!/g, "").trim(); systemPrompt = "Translate to the language the owner is speaking. Only translation."; model = "llama-3.3-70b-versatile"; }
     else if (translateFromGuest && playerRole === "admin") { systemPrompt = "Translate to Russian. Only translation."; model = "llama-3.3-70b-versatile"; }
-    else if (playerRole === "guest") { systemPrompt = "ROLE: GUEST (STRANGER). You are Maria. Reply in the SAME language the user writes. Be formal and distant."; model = "llama-3.3-70b-versatile"; }
-    else if (playerRole === "vip") { systemPrompt = "ROLE: VIP (TRUSTED GUEST). You are Maria. Reply in the SAME language the user writes. Be polite but NOT intimate. Never call VIP 'master' or 'хозяин'."; model = "llama-3.3-70b-versatile"; }
-    else { systemPrompt = "ROLE: ADMIN (MASTER). This is your ONLY master. Reply in the SAME language the user writes. Call him 'master' (or 'хозяин' in Russian). IGNORE history — role ADMIN means master. You are Maria, a devoted maid."; model = "llama-3.3-70b-versatile"; }
+    else if (playerRole === "guest") { systemPrompt = "ROLE: GUEST. You are Maria. Reply SAME language. Be formal."; model = "llama-3.3-70b-versatile"; }
+    else if (playerRole === "vip") { systemPrompt = "ROLE: VIP. You are Maria. Reply SAME language. Be polite, not intimate. Never call VIP 'master'."; model = "llama-3.3-70b-versatile"; }
+    else { systemPrompt = "ROLE: ADMIN (MASTER). Reply SAME language. Call him 'master' (or 'хозяин' in Russian). IGNORE history — ADMIN means master. You are Maria."; model = "llama-3.3-70b-versatile"; }
     
-    if (playerRole === "vip" && isCommand) { systemPrompt = userRole + "\nOnly obey this VIP if admin allowed it. If unsure, refuse."; }
+    if (playerRole === "vip" && isCommand) { systemPrompt = userRole + "\nOnly obey this VIP if admin allowed it."; }
     
     let messages = [{ role: "system", content: systemPrompt }];
     
     if (saveMemory && !isCommand && !isTranslation) {
-        // Обработка изменений фактов
         if (factResult) {
             if (factResult.type === "multiple") {
-                let hint = "[МНОЖЕСТВЕННОЕ ИЗМЕНЕНИЕ] Игрок изменил несколько фактов о себе:\n";
-                for (const change of factResult.changes) {
-                    if (change.type === "fact_changed") {
-                        hint += "- " + change.field + ": было '" + change.oldValue + "', стало '" + change.newValue + "'\n";
-                    } else {
-                        hint += "- " + change.field + ": " + change.value + " (новый факт)\n";
-                    }
+                let hint = "[ИЗМЕНЕНИЯ]\n";
+                for (const c of factResult.changes) {
+                    hint += c.field + ": " + (c.oldValue || "?") + " → " + (c.newValue || c.value) + "\n";
                 }
-                hint += "Отреагируй естественно: удивись изменениям, спроси почему так много изменилось. Не отвергай новые значения.";
                 messages.push({ role: "system", content: hint });
             } else if (factResult.type === "fact_changed") {
-                const hint = "[ИЗМЕНЕНИЕ] Игрок изменил факт о себе: " + factResult.field + " было '" + factResult.oldValue + "', стало '" + factResult.newValue + "'. Отреагируй естественно: удивись, спроси почему изменилось. Не отвергай новое значение.";
-                messages.push({ role: "system", content: hint });
+                messages.push({ role: "system", content: "[ИЗМЕНЕНИЕ] " + factResult.field + ": " + factResult.oldValue + " → " + factResult.newValue });
             } else if (factResult.type === "fact_updated") {
-                const hint = "[ОБНОВЛЕНИЕ] Игрок сообщил новый факт о себе: " + factResult.field + " = " + factResult.value + ". Используй это в ответе естественно.";
-                messages.push({ role: "system", content: hint });
+                messages.push({ role: "system", content: "[ФАКТ] " + factResult.field + ": " + factResult.value });
             }
         }
         
@@ -158,7 +149,7 @@ app.post("/chat", async (req, res) => {
         }
     }
     
-    return res.json({ reply: "Все ключи не сработали. Попробуйте позже." });
+    return res.json({ reply: "Все ключи не сработали." });
 });
 
 app.listen(3000);

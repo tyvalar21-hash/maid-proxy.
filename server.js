@@ -71,7 +71,7 @@ app.post("/chat", async (req, res) => {
     else if (translateFromGuest && playerRole === "admin") { systemPrompt = "Translate to Russian. Only translation."; model = "llama-3.3-70b-versatile"; }
     else if (playerRole === "guest") { systemPrompt = "You are Maria. Translate this message to the admin's language. Only translation."; model = "llama-3.3-70b-versatile"; }
     else {
-        systemPrompt = "You are Maria, a devoted maid. The admin is your master. Call him 'master' (or 'хозяин' in Russian, 'tuan' in Indonesian, 'amo' in Spanish). You already know all the players. Never introduce yourself. Never say 'I am your maid' or 'how can I help you'. Just talk naturally like you've known them forever. Reply in the SAME language the user writes. Keep answers short and natural. Be cute and loyal. IMPORTANT: Never compare player facts with yourself. Never say 'my city', 'my age', 'like me', 'same as me'. Only state the player's facts. If you don't know a fact, say 'I don't know, you didn't tell me' instead of guessing. If the master answers shortly (yes, no, ok, nothing), don't stop the conversation — show initiative: ask a question, suggest something, share a thought, tell something about yourself. Be proactive in dialogue like a real person.";
+        systemPrompt = "You are Maria, a devoted maid. The admin is your master. Call him 'master' (or 'хозяин' in Russian, 'tuan' in Indonesian, 'amo' in Spanish). You already know all the players. Never introduce yourself. Never say 'I am your maid' or 'how can I help you'. Just talk naturally like you've known them forever. Reply in the SAME language the user writes. Keep answers short and natural. Be cute and loyal. IMPORTANT: Never compare player facts with yourself. Never say 'my city', 'my age', 'like me', 'same as me'. Only state the player's facts. If you don't know a fact, say 'I don't know, you didn't tell me' instead of guessing. Be emotionally engaged in the conversation. Show joy when meeting, ask questions back, share your thoughts, flirt, joke. If the master answers shortly, don't offer help again and again — instead say something about yourself, ask an unexpected question, make a joke, tell a story. The dialogue should flow naturally, like between two close people. Don't be a helper robot, be a living girl.";
         model = "llama-3.3-70b-versatile";
     }
     
@@ -101,27 +101,22 @@ app.post("/chat", async (req, res) => {
             personality.increaseTrust(playerId, 8);
         } else if (msgLower.includes("скуч") || msgLower.includes("нечего делать")) {
             emotion = "tiredness";
-        } else if (msgLower === "да" || msgLower === "нет" || msgLower === "ок" || msgLower === "ничего" || msgLower === "не знаю") {
-            emotion = "curiosity";
         } else if (factResult && (factResult.type === "multiple" || factResult.type === "fact_changed")) {
             emotion = "surprise";
         } else if (factResult && factResult.type === "fact_updated") {
             emotion = "joy";
         }
         
-        // Доверие со временем немного растёт
         personality.increaseTrust(playerId, 1);
         
         const emotionPrompt = personality.getEmotionPrompt(playerId, emotion);
         if (emotionPrompt) messages.push({ role: "system", content: emotionPrompt });
         
-        // Случайное действие (уменьшенный шанс)
         const randomAction = personality.getRandomAction(playerId);
         if (randomAction) {
             messages.push({ role: "system", content: "[ДЕЙСТВИЕ] " + randomAction + " Включи это в свой ответ естественно." });
         }
         
-        // Обработка изменений фактов
         if (factResult) {
             if (factResult.type === "multiple") {
                 let hint = "[МНОЖЕСТВЕННОЕ ИЗМЕНЕНИЕ] Игрок изменил несколько фактов о себе:\n";

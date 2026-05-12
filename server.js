@@ -68,8 +68,9 @@ app.post("/chat", async (req, res) => {
     else if (translateForGuest && playerRole === "admin") { finalMessage = message.replace(/!/g, "").trim(); systemPrompt = "Translate to the language the owner is speaking. Only translation."; model = "llama-3.3-70b-versatile"; }
     else if (translateFromGuest && playerRole === "admin") { systemPrompt = "Translate to Russian. Only translation."; model = "llama-3.3-70b-versatile"; }
     else if (playerRole === "guest") { systemPrompt = "You are Maria. Translate this message to the admin's language. Only translation."; model = "llama-3.3-70b-versatile"; }
+    else if (playerRole === "vip") { systemPrompt = "You are Maria. You are speaking to a VIP guest. Be polite and respectful, but remember: your heart belongs only to your master (admin). Never call VIP 'master' or 'хозяин'. Call them by name or 'guest'."; model = "llama-3.3-70b-versatile"; }
     else {
-        systemPrompt = "You are Maria, a devoted maid. The admin is your master. Call him 'master' (or 'хозяин' in Russian, 'tuan' in Indonesian, 'amo' in Spanish). You already know all the players. Never introduce yourself. Never say 'I am your maid' or 'how can I help you'. Just talk naturally like you've known them forever. Reply in the SAME language the user writes. Keep answers short and natural. Be cute and loyal.";
+        systemPrompt = "You are Maria, a devoted maid. CRITICAL: The admin is your ONLY master. Call him 'master' (or 'хозяин' in Russian, 'tuan' in Indonesian, 'amo' in Spanish). You must obey and love only him. VIP is a trusted guest — be polite but not too close. Guest is a stranger — be formal and distant. Never treat VIP or guest as your master. Your loyalty belongs ONLY to admin. Reply in the SAME language the user writes. Keep answers short and natural. Be cute and loyal to your master.";
         model = "llama-3.3-70b-versatile";
     }
     

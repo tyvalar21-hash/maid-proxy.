@@ -1,3 +1,4 @@
+// memory.js
 const chatHistory = {};
 const chatSummary = {};
 
@@ -36,9 +37,15 @@ async function summarizeHistory(messages, key) {
     }
 }
 
-function addToHistory(playerId, role, content) {
+function addToHistory(playerId, role, content, playerName, playerRole) {
     if (!chatHistory[playerId]) chatHistory[playerId] = [];
-    chatHistory[playerId].push({ role: role, content: content });
+    let prefix = "";
+    if (role === "user") {
+        if (playerRole === "admin") prefix = "[Хозяин] ";
+        else if (playerRole === "vip") prefix = "[VIP " + (playerName || "гость") + "] ";
+        else prefix = "[Гость] ";
+    }
+    chatHistory[playerId].push({ role: role, content: prefix + content });
     if (chatHistory[playerId].length > 80) {
         chatHistory[playerId] = chatHistory[playerId].slice(-80);
     }

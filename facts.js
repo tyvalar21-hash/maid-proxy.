@@ -33,7 +33,7 @@ function extractFacts(message, playerId) {
     }
 
     // Откуда
-    const fromMatch = message.match(/(?:я из|я с|я живу в|родом из|я вырос в|я)\s+(?:из\s+)?(.+?)(?:\.|\,|\s*$)/i);
+    const fromMatch = message.match(/(?:я из|я с|я живу в|родом из|я вырос в)\s+(.+?)(?:\.|\,|\s*$)/i);
     if (fromMatch) {
         const newFrom = fromMatch[1].trim();
         const oldFrom = facts.from;
@@ -126,6 +126,48 @@ function extractFacts(message, playerId) {
         results.push({ type: "fact_updated", field: "игра", value: facts.favoriteGame });
     }
 
+    // День рождения
+    const bdayMatch = msg.match(/(?:мой день рождения|я родился|я родилась|день рождения)\s+(.+?)(?:\.|\,|\s*$)/i);
+    if (bdayMatch) {
+        facts.birthday = bdayMatch[1].trim();
+        results.push({ type: "fact_updated", field: "день рождения", value: facts.birthday });
+    }
+
+    // Хобби
+    const hobbyMatch = msg.match(/(?:моё хобби|я увлекаюсь|я коллекционирую|моё увлечение)\s+(.+?)(?:\.|\,|\s*$)/i);
+    if (hobbyMatch) {
+        facts.hobby = hobbyMatch[1].trim();
+        results.push({ type: "fact_updated", field: "хобби", value: facts.hobby });
+    }
+
+    // Женат/замужем
+    const marriedMatch = msg.match(/(?:я женат|я замужем|я холост|я не женат|я не замужем)/i);
+    if (marriedMatch) {
+        facts.married = marriedMatch[0].trim();
+        results.push({ type: "fact_updated", field: "семейное положение", value: facts.married });
+    }
+
+    // Профессия/учёба
+    const jobMatch = msg.match(/(?:я работаю|я учусь|моя профессия|я студент|я школьник)\s+(.+?)(?:\.|\,|\s*$)/i);
+    if (jobMatch) {
+        facts.job = jobMatch[1].trim();
+        results.push({ type: "fact_updated", field: "профессия/учёба", value: facts.job });
+    }
+
+    // Знак зодиака
+    const zodiacMatch = msg.match(/(?:мой знак зодиака|я по знаку|я)\s+(овен|телец|близнецы|рак|лев|дева|весы|скорпион|стрелец|козерог|водолей|рыбы)/i);
+    if (zodiacMatch) {
+        facts.zodiac = zodiacMatch[1].trim();
+        results.push({ type: "fact_updated", field: "знак зодиака", value: facts.zodiac });
+    }
+
+    // Любимый фильм/аниме
+    const filmMatch = msg.match(/(?:мой любимый фильм|моё любимое аниме|я люблю смотреть|мой любимый сериал)\s+(.+?)(?:\.|\,|\s*$)/i);
+    if (filmMatch) {
+        facts.favoriteFilm = filmMatch[1].trim();
+        results.push({ type: "fact_updated", field: "любимый фильм/аниме", value: facts.favoriteFilm });
+    }
+
     // События
     const eventMatch = msg.match(/(?:я купил|я переехал|я наш[её]л работу|у меня день рождения)\s+(.+?)(?:\.|\,|\s*$)/i);
     if (eventMatch) {
@@ -156,6 +198,12 @@ function buildFactsString(playerId) {
     if (f.friends) parts.push("Друзья: " + f.friends);
     if (f.playsRoblox) parts.push("Roblox: " + f.playsRoblox);
     if (f.favoriteGame) parts.push("Игра: " + f.favoriteGame);
+    if (f.birthday) parts.push("День рождения: " + f.birthday);
+    if (f.hobby) parts.push("Хобби: " + f.hobby);
+    if (f.married) parts.push("Семейное положение: " + f.married);
+    if (f.job) parts.push("Профессия/учёба: " + f.job);
+    if (f.zodiac) parts.push("Знак зодиака: " + f.zodiac);
+    if (f.favoriteFilm) parts.push("Любимый фильм/аниме: " + f.favoriteFilm);
     if (f.events && f.events.length > 0) parts.push("События: " + f.events.join(", "));
     if (parts.length === 0) return "";
     return "[ФАКТЫ]\n" + parts.join("\n") + "\n\n";

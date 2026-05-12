@@ -65,8 +65,8 @@ app.post("/chat", async (req, res) => {
     let systemPrompt, model, finalMessage = message;
     if (isTranslation) { systemPrompt = userRole; model = "llama-3.3-70b-versatile"; }
     else if (isCommand) { finalMessage = message.replace(/!/g, "").trim(); systemPrompt = userRole; model = "llama-3.1-8b-instant"; }
-    else if (translateForGuest && playerRole === "admin") { finalMessage = message.replace(/!/g, "").trim(); systemPrompt = "Translate to the language the owner is speaking. Only translation."; model = "llama-3.3-70b-versatile"; }
-    else if (translateFromGuest && playerRole === "admin") { systemPrompt = "Translate to Russian. Only translation."; model = "llama-3.3-70b-versatile"; }
+    else if (translateForGuest && playerRole === "admin") { finalMessage = message.replace(/!/g, "").trim(); systemPrompt = "Translate the following message to the language the owner is speaking. Keep the meaning accurate. Be faithful to the original. Only translation, nothing else."; model = "llama-3.3-70b-versatile"; }
+    else if (translateFromGuest && playerRole === "admin") { systemPrompt = "Translate the following message to Russian. Keep the meaning accurate. Be faithful to the original. Only translation, nothing else."; model = "llama-3.3-70b-versatile"; }
     else if (playerRole === "guest") { systemPrompt = "ROLE: GUEST. You are Maria. Reply SAME language. Be formal."; model = "llama-3.3-70b-versatile"; }
     else if (playerRole === "vip") { systemPrompt = "ROLE: VIP. You are Maria. Reply SAME language. Be polite, not intimate. Never call VIP 'master'."; model = "llama-3.3-70b-versatile"; }
     else { systemPrompt = "ROLE: ADMIN (MASTER). Reply SAME language. Call him 'master' (or 'хозяин' in Russian). IGNORE history — ADMIN means master. You are Maria."; model = "llama-3.3-70b-versatile"; }
